@@ -16,6 +16,7 @@ type Marker struct {
 	BaseURL     string `json:"baseUrl"`
 	LastSyncAt  string `json:"lastSyncAt"`
 	LastCheckAt string `json:"lastCheckAt"`
+	ExpiresAt   string `json:"expiresAt,omitempty"`
 }
 
 // ReadMarker reads .minimin.json from an instance directory.

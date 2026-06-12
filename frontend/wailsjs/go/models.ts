@@ -2,6 +2,7 @@ export namespace config {
 	
 	export class Config {
 	    instancesDir: string;
+	    launcher: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -10,6 +11,7 @@ export namespace config {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.instancesDir = source["instancesDir"];
+	        this.launcher = source["launcher"];
 	    }
 	}
 
@@ -23,6 +25,7 @@ export namespace instance {
 	    baseUrl: string;
 	    lastSyncAt: string;
 	    lastCheckAt: string;
+	    expiresAt?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Marker(source);
@@ -35,6 +38,7 @@ export namespace instance {
 	        this.baseUrl = source["baseUrl"];
 	        this.lastSyncAt = source["lastSyncAt"];
 	        this.lastCheckAt = source["lastCheckAt"];
+	        this.expiresAt = source["expiresAt"];
 	    }
 	}
 	export class ScannedInstance {

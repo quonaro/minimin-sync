@@ -34,10 +34,18 @@ export function RemoveServer(arg1) {
   return window['go']['main']['App']['RemoveServer'](arg1);
 }
 
+export function RunServer(arg1) {
+  return window['go']['main']['App']['RunServer'](arg1);
+}
+
 export function SaveConfig(arg1) {
   return window['go']['main']['App']['SaveConfig'](arg1);
 }
 
 export function SelectInstancesDir() {
   return window['go']['main']['App']['SelectInstancesDir']();
+}
+
+export function UpdateServerURL(arg1, arg2) {
+  return window['go']['main']['App']['UpdateServerURL'](arg1, arg2);
 }

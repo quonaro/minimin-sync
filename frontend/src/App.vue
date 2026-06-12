@@ -8,6 +8,8 @@ import {
   SelectInstancesDir,
   RemoveServer,
   CheckUpdates as CheckUpdatesGo,
+  RunServer,
+  UpdateServerURL,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -23,11 +25,17 @@ const instancesDir = ref("");
 const servers = ref<any[]>([]);
 const selectedServer = ref("");
 const detectedLaunchers = ref<string[]>([]);
+const selectedLauncher = ref<string>("");
 const scanning = ref(false);
 const appError = ref<string>("");
 const deleteConfirm = ref(false);
 const deleteTarget = ref("");
 const pendingUpdates = ref<Record<string, number>>({});
+const editModal = ref(false);
+const editTarget = ref("");
+const editUrl = ref("");
+const editError = ref("");
+const editLoading = ref(false);
 
 EventsOn("updates:available", (updates: any[]) => {
   const map: Record<string, number> = {};
@@ -76,10 +84,12 @@ async function scanLaunchers() {
 
 async function selectLauncher(dir: string) {
   instancesDir.value = dir;
+  selectedLauncher.value = launcherType(dir);
   const existing = await GetConfig();
   await SaveConfig(
     new config.Config({
       instancesDir: dir,
+      launcher: selectedLauncher.value,
     }),
   );
   currentView.value = "list";
@@ -95,10 +105,12 @@ async function browseDir() {
 
 async function saveDir() {
   if (!instancesDir.value) return;
+  selectedLauncher.value = launcherType(instancesDir.value);
   const existing = await GetConfig();
   await SaveConfig(
     new config.Config({
       instancesDir: instancesDir.value,
+      launcher: selectedLauncher.value,
     }),
   );
   currentView.value = "list";
@@ -132,6 +144,45 @@ function cancelDelete() {
   deleteTarget.value = "";
 }
 
+async function handleRun(serverId: string) {
+  try {
+    await RunServer(serverId);
+  } catch (e: any) {
+    appError.value = e?.toString?.() || "Failed to start server";
+  }
+}
+
+function openEdit(serverId: string) {
+  editTarget.value = serverId;
+  editUrl.value = "";
+  editError.value = "";
+  editLoading.value = false;
+  editModal.value = true;
+}
+
+async function confirmEdit() {
+  if (!editUrl.value) return;
+  editLoading.value = true;
+  editError.value = "";
+  try {
+    await UpdateServerURL(editTarget.value, editUrl.value);
+    editModal.value = false;
+    await loadServers();
+  } catch (e: any) {
+    editError.value = e?.toString?.() || "Failed to update link";
+  } finally {
+    editLoading.value = false;
+  }
+}
+
+function cancelEdit() {
+  editModal.value = false;
+  editTarget.value = "";
+  editUrl.value = "";
+  editError.value = "";
+  editLoading.value = false;
+}
+
 function goList() {
   currentView.value = "list";
   loadServers();
@@ -147,6 +198,7 @@ async function goSetup() {
   currentView.value = "setup";
   const cfg = await GetConfig();
   instancesDir.value = cfg.instancesDir || "";
+  selectedLauncher.value = cfg.launcher || "";
   await scanLaunchers();
 }
 
@@ -163,6 +215,17 @@ function launcherName(dir: string): string {
     if (p.includes("multimc")) return "MultiMC";
   }
   return "Unknown Launcher";
+}
+
+function launcherType(dir: string): string {
+  const parts = dir.split("/");
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i].toLowerCase();
+    if (p.includes("elyprismlauncher")) return "elyprismlauncher";
+    if (p.includes("prismlauncher")) return "prismlauncher";
+    if (p.includes("multimc")) return "multimc";
+  }
+  return "";
 }
 
 const pageTitle = computed(() => {
@@ -331,9 +394,11 @@ const pageTitle = computed(() => {
         <ServerList
           :servers="servers"
           :pending-updates="pendingUpdates"
+          @run="handleRun"
           @check="goCheck"
           @add="goAdd"
           @delete="openDeleteConfirm"
+          @edit="openEdit"
         />
       </div>
       <AddServer v-else-if="currentView === 'add'" @done="goList" />
@@ -367,6 +432,55 @@ const pageTitle = computed(() => {
               @click="confirmDelete"
             >
               Delete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="editModal"
+        class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
+      >
+        <div
+          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700"
+        >
+          <h3 class="text-lg font-bold mb-2">Edit Server Link</h3>
+          <p class="text-neutral-400 text-sm mb-4">
+            Update the archive link for
+            <span class="text-white font-medium">{{ editTarget }}</span>
+          </p>
+          <input
+            v-model="editUrl"
+            type="text"
+            placeholder="https://host/api/client-archive/abc123"
+            class="w-full px-4 py-2.5 rounded-lg bg-neutral-900 border border-neutral-700 text-sm focus:outline-none focus:border-primary mb-4"
+          />
+          <div
+            v-if="editError"
+            class="p-3 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm mb-4"
+          >
+            {{ editError }}
+          </div>
+          <div class="flex gap-3">
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              @click="cancelEdit"
+            >
+              Cancel
+            </button>
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!editUrl || editLoading"
+              @click="confirmEdit"
+            >
+              <span
+                v-if="editLoading"
+                class="flex items-center justify-center gap-2"
+              >
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Saving...
+              </span>
+              <span v-else>Save</span>
             </button>
           </div>
         </div>

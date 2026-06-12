@@ -20,6 +20,10 @@ export function PreviewServer(arg1:string):Promise<sync.InfoResponse>;
 
 export function RemoveServer(arg1:string):Promise<void>;
 
+export function RunServer(arg1:string):Promise<void>;
+
 export function SaveConfig(arg1:config.Config):Promise<void>;
 
 export function SelectInstancesDir():Promise<string>;
+
+export function UpdateServerURL(arg1:string,arg2:string):Promise<void>;

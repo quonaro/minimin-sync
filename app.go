@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,6 +39,11 @@ func (a *App) startup(ctx context.Context) {
 		cfg = &config.Config{}
 	}
 	a.config = cfg
+
+	if a.config.InstancesDir != "" && a.config.Launcher == "" {
+		a.config.Launcher = detectLauncherFromPath(a.config.InstancesDir)
+		_ = a.config.Save()
+	}
 
 	go a.autoCheckLoop()
 }
@@ -219,6 +225,7 @@ func (a *App) AddServer(url string) error {
 			Token:      token,
 			BaseURL:    baseURL,
 			LastSyncAt: time.Now().UTC().Format(time.RFC3339),
+			ExpiresAt:  info.ExpiresAt,
 		}
 		runtime.LogInfof(a.ctx, "writing marker to %s", filepath.Join(instanceDir, instance.MarkerFile))
 		if err := instance.WriteMarker(instanceDir, marker); err != nil {
@@ -249,6 +256,14 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	runtime.LogInfof(a.ctx, "marker read: baseURL=%s token=%s...", marker.BaseURL, marker.Token[:8])
 
 	client := sync.NewClient(marker.BaseURL, marker.Token)
+
+	info, err := client.FetchInfo()
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "fetch info failed for %s: %v", serverID, err)
+	} else {
+		marker.ExpiresAt = info.ExpiresAt
+	}
+
 	manifest, err := client.FetchManifest()
 	if err != nil {
 		runtime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
@@ -404,6 +419,86 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 	}()
 
 	return nil
+}
+
+func detectLauncherFromPath(dir string) string {
+	lower := strings.ToLower(dir)
+	if strings.Contains(lower, "elyprismlauncher") {
+		return "elyprismlauncher"
+	}
+	if strings.Contains(lower, "prismlauncher") {
+		return "prismlauncher"
+	}
+	if strings.Contains(lower, "multimc") {
+		return "multimc"
+	}
+	return "prismlauncher"
+}
+
+// RunServer launches the given instance via the configured launcher binary.
+func (a *App) RunServer(serverID string) error {
+	binary := a.config.Launcher
+	if binary == "" {
+		binary = "prismlauncher"
+	}
+
+	launcher, err := exec.LookPath(binary)
+	if err != nil {
+		var fallbacks []string
+		switch binary {
+		case "elyprismlauncher":
+			fallbacks = []string{"prismlauncher", "prism-launcher"}
+		case "prismlauncher":
+			fallbacks = []string{"prism-launcher"}
+		case "multimc":
+			fallbacks = []string{"multimc-qt5"}
+		}
+		for _, fb := range fallbacks {
+			launcher, err = exec.LookPath(fb)
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("launcher %q not found in PATH", binary)
+		}
+	}
+	cmd := exec.Command(launcher, "--launch", serverID)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UpdateServerURL updates the archive link for an existing server.
+func (a *App) UpdateServerURL(serverID, url string) error {
+	if !strings.Contains(url, "?format=") {
+		url = url + "?format=prism"
+	}
+	token, baseURL, err := parseArchiveURL(url)
+	if err != nil {
+		return err
+	}
+	dir := a.config.InstancesDir
+	if dir == "" {
+		return fmt.Errorf("instances directory not configured")
+	}
+	instanceDir := filepath.Join(dir, serverID)
+	marker, err := instance.ReadMarker(instanceDir)
+	if err != nil {
+		return err
+	}
+
+	client := sync.NewClient(baseURL, token)
+	info, err := client.FetchInfo()
+	if err != nil {
+		return err
+	}
+
+	marker.Token = token
+	marker.BaseURL = baseURL
+	marker.ExpiresAt = info.ExpiresAt
+	return instance.WriteMarker(instanceDir, marker)
 }
 
 func sanitizeName(name string) string {

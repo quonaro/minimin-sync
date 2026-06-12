@@ -30,6 +30,22 @@ func NewClient(baseURL, token string) *Client {
 	}
 }
 
+func checkStatus(resp *http.Response) error {
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("archive not found (404) — the link may be invalid or expired")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("access denied (%d) — the link may have expired", resp.StatusCode)
+	case http.StatusInternalServerError:
+		return fmt.Errorf("server error (500) — the archive server is temporarily unavailable")
+	default:
+		return fmt.Errorf("server returned HTTP %d", resp.StatusCode)
+	}
+}
+
 // ManifestFile is a single entry in the server manifest.
 type ManifestFile struct {
 	Path   string `json:"path"`
@@ -60,8 +76,8 @@ func (c *Client) FetchInfo() (*InfoResponse, error) {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned %d", resp.StatusCode)
+	if err := checkStatus(resp); err != nil {
+		return nil, err
 	}
 	var i InfoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&i); err != nil {
@@ -78,14 +94,60 @@ func (c *Client) FetchManifest() (*ManifestResponse, error) {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned %d", resp.StatusCode)
+	if err := checkStatus(resp); err != nil {
+		return nil, err
 	}
 	var m ManifestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// DownloadFile downloads a single file by manifest path and writes it to destPath.
+func (c *Client) DownloadFile(filePath string, destPath string, progress func(downloaded, total int64)) error {
+	url := fmt.Sprintf("%s/api/client-archive/%s/file/%s", c.BaseURL, c.Token, filePath)
+	resp, err := c.HTTP.Get(url)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := checkStatus(resp); err != nil {
+		return err
+	}
+
+	total := resp.ContentLength
+	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+		return err
+	}
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = out.Close() }()
+
+	written := int64(0)
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			_, werr := out.Write(buf[:n])
+			if werr != nil {
+				return werr
+			}
+			written += int64(n)
+			if progress != nil {
+				progress(written, total)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DownloadArchive downloads the archive to a temporary file and reports progress.
@@ -96,8 +158,8 @@ func (c *Client) DownloadArchive(format string, progress func(downloaded, total 
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server returned %d", resp.StatusCode)
+	if err := checkStatus(resp); err != nil {
+		return "", err
 	}
 
 	total := resp.ContentLength

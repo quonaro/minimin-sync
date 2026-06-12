@@ -16,7 +16,11 @@ export function GetConfig():Promise<config.Config>;
 
 export function GetServers():Promise<Array<instance.ScannedInstance>>;
 
+export function OpenInstanceDir(arg1:string):Promise<void>;
+
 export function PreviewServer(arg1:string):Promise<sync.InfoResponse>;
+
+export function RefreshServerInfo(arg1:string):Promise<void>;
 
 export function RemoveServer(arg1:string):Promise<void>;
 

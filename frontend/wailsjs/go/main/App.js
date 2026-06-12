@@ -26,8 +26,16 @@ export function GetServers() {
   return window['go']['main']['App']['GetServers']();
 }
 
+export function OpenInstanceDir(arg1) {
+  return window['go']['main']['App']['OpenInstanceDir'](arg1);
+}
+
 export function PreviewServer(arg1) {
   return window['go']['main']['App']['PreviewServer'](arg1);
+}
+
+export function RefreshServerInfo(arg1) {
+  return window['go']['main']['App']['RefreshServerInfo'](arg1);
 }
 
 export function RemoveServer(arg1) {

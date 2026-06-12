@@ -10,6 +10,8 @@ import {
   CheckUpdates as CheckUpdatesGo,
   RunServer,
   UpdateServerURL,
+  RefreshServerInfo,
+  OpenInstanceDir,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -62,7 +64,9 @@ onMounted(async () => {
     currentView.value = "list";
     await loadServers();
     for (const s of servers.value) {
-      CheckUpdatesGo(s.Name).catch(() => {});
+      RefreshServerInfo(s.Name)
+        .then(() => loadServers())
+        .catch(() => {});
     }
   }
 });
@@ -149,6 +153,14 @@ async function handleRun(serverId: string) {
     await RunServer(serverId);
   } catch (e: any) {
     appError.value = e?.toString?.() || "Failed to start server";
+  }
+}
+
+async function handleOpenDir(serverId: string) {
+  try {
+    await OpenInstanceDir(serverId);
+  } catch (e: any) {
+    appError.value = e?.toString?.() || "Failed to open folder";
   }
 }
 
@@ -399,6 +411,7 @@ const pageTitle = computed(() => {
           @add="goAdd"
           @delete="openDeleteConfirm"
           @edit="openEdit"
+          @open-dir="handleOpenDir"
         />
       </div>
       <AddServer v-else-if="currentView === 'add'" @done="goList" />

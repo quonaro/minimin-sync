@@ -1,13 +1,12 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 	"minimin-sync/pkg/instance"
 	"minimin-sync/pkg/sync"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -35,7 +34,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	cfg, err := config.Load()
 	if err != nil {
-		runtime.LogErrorf(ctx, "failed to load config: %v", err)
+		wailsruntime.LogErrorf(ctx, "failed to load config: %v", err)
 		cfg = &config.Config{}
 	}
 	a.config = cfg
@@ -106,9 +105,9 @@ func (a *App) runAutoCheck() {
 		}
 	}
 	if len(updates) > 0 {
-		runtime.EventsEmit(a.ctx, "updates:available", updates)
+		wailsruntime.EventsEmit(a.ctx, "updates:available", updates)
 	}
-	runtime.EventsEmit(a.ctx, "servers:reload")
+	wailsruntime.EventsEmit(a.ctx, "servers:reload")
 }
 
 // GetConfig returns the current configuration.
@@ -132,7 +131,7 @@ func (a *App) DiscoverAllLaunchers() []string {
 
 // SelectInstancesDir opens an OS folder picker dialog.
 func (a *App) SelectInstancesDir() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+	return wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
 		Title: "Select Prism Launcher instances directory",
 	})
 }
@@ -185,38 +184,38 @@ func (a *App) AddServer(url string) error {
 	go func() {
 		client := sync.NewClient(baseURL, token)
 
-		runtime.EventsEmit(a.ctx, "addServer:status", "fetching info")
+		wailsruntime.EventsEmit(a.ctx, "addServer:status", "fetching info")
 		info, err := client.FetchInfo()
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
 
 		name := sanitizeName(info.ServerName)
 		if name == "" {
-			runtime.EventsEmit(a.ctx, "addServer:error", "server name is empty")
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", "server name is empty")
 			return
 		}
 
-		runtime.EventsEmit(a.ctx, "addServer:status", "downloading archive")
+		wailsruntime.EventsEmit(a.ctx, "addServer:status", "downloading archive")
 		tmpPath, err := client.DownloadArchive("prism", func(d, t int64) {
-			runtime.EventsEmit(a.ctx, "addServer:progress", d, t)
+			wailsruntime.EventsEmit(a.ctx, "addServer:progress", d, t)
 		})
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
 		defer func() { _ = os.Remove(tmpPath) }()
 
 		instanceDir := filepath.Join(a.config.InstancesDir, name)
 		if err := os.MkdirAll(instanceDir, 0o755); err != nil {
-			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
 
-		runtime.EventsEmit(a.ctx, "addServer:status", "extracting")
+		wailsruntime.EventsEmit(a.ctx, "addServer:status", "extracting")
 		if err := sync.ExtractAll(tmpPath, instanceDir); err != nil {
-			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
 
@@ -227,13 +226,13 @@ func (a *App) AddServer(url string) error {
 			LastSyncAt: time.Now().UTC().Format(time.RFC3339),
 			ExpiresAt:  info.ExpiresAt,
 		}
-		runtime.LogInfof(a.ctx, "writing marker to %s", filepath.Join(instanceDir, instance.MarkerFile))
+		wailsruntime.LogInfof(a.ctx, "writing marker to %s", filepath.Join(instanceDir, instance.MarkerFile))
 		if err := instance.WriteMarker(instanceDir, marker); err != nil {
-			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
 
-		runtime.EventsEmit(a.ctx, "addServer:done", info.ServerName)
+		wailsruntime.EventsEmit(a.ctx, "addServer:done", info.ServerName)
 	}()
 
 	return nil
@@ -246,30 +245,31 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	}
 
 	instanceDir := filepath.Join(dir, serverID)
-	runtime.LogInfof(a.ctx, "checking updates for %s in %s", serverID, instanceDir)
+	wailsruntime.LogInfof(a.ctx, "checking updates for %s in %s", serverID, instanceDir)
 
 	marker, err := instance.ReadMarker(instanceDir)
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "read marker failed: %v", err)
+		wailsruntime.LogErrorf(a.ctx, "read marker failed: %v", err)
 		return nil, err
 	}
-	runtime.LogInfof(a.ctx, "marker read: baseURL=%s token=%s...", marker.BaseURL, marker.Token[:8])
+	wailsruntime.LogInfof(a.ctx, "marker read: baseURL=%s token=%s...", marker.BaseURL, marker.Token[:8])
 
 	client := sync.NewClient(marker.BaseURL, marker.Token)
 
 	info, err := client.FetchInfo()
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "fetch info failed for %s: %v", serverID, err)
+		wailsruntime.LogErrorf(a.ctx, "fetch info failed for %s: %v", serverID, err)
 	} else {
 		marker.ExpiresAt = info.ExpiresAt
+		_ = instance.WriteMarker(instanceDir, marker)
 	}
 
 	manifest, err := client.FetchManifest()
 	if err != nil {
-		runtime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
+		wailsruntime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
 		return nil, err
 	}
-	runtime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
+	wailsruntime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
 
 	localDir := filepath.Join(instanceDir, ".minecraft")
 	var missing []sync.ManifestFile
@@ -317,7 +317,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 		"outdated": outdated,
 		"orphan":   orphan,
 	}
-	runtime.LogInfof(a.ctx, "check complete: missing=%d outdated=%d orphan=%d", len(missing), len(outdated), len(orphan))
+	wailsruntime.LogInfof(a.ctx, "check complete: missing=%d outdated=%d orphan=%d", len(missing), len(outdated), len(orphan))
 
 	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
 	_ = instance.WriteMarker(instanceDir, marker)
@@ -330,7 +330,7 @@ func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
 	return a.checkUpdatesInternal(serverID)
 }
 
-// ApplyUpdates downloads the zip archive and applies selected files asynchronously.
+// ApplyUpdates downloads individual files and applies selected changes asynchronously.
 func (a *App) ApplyUpdates(serverID string, selected []string) error {
 	dir := a.config.InstancesDir
 	if dir == "" {
@@ -346,20 +346,26 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 	go func() {
 		client := sync.NewClient(marker.BaseURL, marker.Token)
 
-		runtime.EventsEmit(a.ctx, "applyUpdates:status", "downloading archive")
-		tmpPath, err := client.DownloadArchive("zip", func(d, t int64) {
-			runtime.EventsEmit(a.ctx, "applyUpdates:progress", d, t)
-		})
+		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "fetching manifest")
+		manifest, err := client.FetchManifest()
 		if err != nil {
-			runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
+			wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
 			return
 		}
-		defer func() { _ = os.Remove(tmpPath) }()
 
-		selectedMap := make(map[string]bool)
+		manifestMap := make(map[string]sync.ManifestFile)
+		for _, mf := range manifest.Files {
+			manifestMap[mf.Path] = mf
+		}
+
+		var toDownload []sync.ManifestFile
+		var toDelete []string
 		for _, p := range selected {
-			zipPath := strings.TrimPrefix(p, ".minecraft/")
-			selectedMap[zipPath] = true
+			if mf, ok := manifestMap[p]; ok {
+				toDownload = append(toDownload, mf)
+			} else {
+				toDelete = append(toDelete, p)
+			}
 		}
 
 		backupDir := filepath.Join(instanceDir, ".minimin-backup")
@@ -374,39 +380,36 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 			}
 		}
 
-		runtime.EventsEmit(a.ctx, "applyUpdates:status", "extracting files")
-		zr, err := zip.OpenReader(tmpPath)
-		if err != nil {
-			runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
-			return
+		for _, p := range toDelete {
+			target := filepath.Join(instanceDir, filepath.FromSlash(p))
+			_ = os.Remove(target)
 		}
-		defer func() { _ = zr.Close() }()
 
-		for _, f := range zr.File {
-			if !selectedMap[f.Name] {
-				continue
-			}
-			target := filepath.Join(instanceDir, ".minecraft", filepath.FromSlash(f.Name))
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
+		var totalBytes int64
+		for _, mf := range toDownload {
+			totalBytes += mf.Size
+		}
+		var downloadedBytes int64
+
+		for _, mf := range toDownload {
+			wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(mf.Path)))
+			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
+			err := client.DownloadFile(mf.Path, dest, func(d, t int64) {
+				wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", downloadedBytes+d, totalBytes)
+			})
+			if err != nil {
+				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
 				return
 			}
-			rc, err := f.Open()
-			if err != nil {
-				runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
-				return
-			}
-			out, err := os.Create(target)
-			if err != nil {
-				_ = rc.Close()
-				runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
-				return
-			}
-			_, err = io.Copy(out, rc)
-			_ = out.Close()
-			_ = rc.Close()
-			if err != nil {
-				runtime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
+			downloadedBytes += mf.Size
+		}
+
+		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "verifying files")
+		for _, mf := range toDownload {
+			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
+			hash, err := sync.ComputeSHA256(dest)
+			if err != nil || hash != mf.SHA256 {
+				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("hash mismatch for %s", mf.Path))
 				return
 			}
 		}
@@ -415,7 +418,7 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		_ = instance.WriteMarker(instanceDir, marker)
 		_ = os.RemoveAll(backupDir)
 
-		runtime.EventsEmit(a.ctx, "applyUpdates:done", serverID)
+		wailsruntime.EventsEmit(a.ctx, "applyUpdates:done", serverID)
 	}()
 
 	return nil
@@ -433,6 +436,28 @@ func detectLauncherFromPath(dir string) string {
 		return "multimc"
 	}
 	return "prismlauncher"
+}
+
+// OpenInstanceDir opens the instance directory in the OS file manager.
+func (a *App) OpenInstanceDir(serverID string) error {
+	dir := a.config.InstancesDir
+	if dir == "" {
+		return fmt.Errorf("instances directory not configured")
+	}
+	instanceDir := filepath.Join(dir, serverID)
+	if _, err := os.Stat(instanceDir); err != nil {
+		return fmt.Errorf("instance directory not found: %w", err)
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", instanceDir)
+	case "windows":
+		cmd = exec.Command("explorer", instanceDir)
+	default:
+		cmd = exec.Command("xdg-open", instanceDir)
+	}
+	return cmd.Start()
 }
 
 // RunServer launches the given instance via the configured launcher binary.
@@ -468,6 +493,29 @@ func (a *App) RunServer(serverID string) error {
 		return err
 	}
 	return nil
+}
+
+// RefreshServerInfo fetches archive metadata and updates ExpiresAt in the marker.
+func (a *App) RefreshServerInfo(serverID string) error {
+	dir := a.config.InstancesDir
+	if dir == "" {
+		return fmt.Errorf("instances directory not configured")
+	}
+	instanceDir := filepath.Join(dir, serverID)
+	marker, err := instance.ReadMarker(instanceDir)
+	if err != nil {
+		return err
+	}
+
+	client := sync.NewClient(marker.BaseURL, marker.Token)
+	info, err := client.FetchInfo()
+	if err != nil {
+		return err
+	}
+
+	marker.ExpiresAt = info.ExpiresAt
+	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
+	return instance.WriteMarker(instanceDir, marker)
 }
 
 // UpdateServerURL updates the archive link for an existing server.

@@ -7,6 +7,7 @@ import {
   Trash2,
   Play,
   Pencil,
+  FolderOpen,
 } from "@lucide/vue";
 import { ref, onMounted, onUnmounted } from "vue";
 
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   (e: "add"): void;
   (e: "delete", serverId: string): void;
   (e: "edit", serverId: string): void;
+  (e: "open-dir", serverId: string): void;
 }>();
 
 const now = ref(Date.now());
@@ -130,6 +132,9 @@ function timeLeftClass(expiresAt?: string): string {
           >
             Link expired — update required
           </p>
+          <p v-else class="text-xs text-neutral-500 mt-0.5 font-medium">
+            Link expiry unknown
+          </p>
         </div>
         <div class="flex items-center gap-2">
           <template v-if="!isExpired(s.Marker?.ExpiresAt)">
@@ -146,6 +151,13 @@ function timeLeftClass(expiresAt?: string): string {
             >
               <RefreshCw class="w-4 h-4" />
               Check
+            </button>
+            <button
+              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
+              :title="'Open folder'"
+              @click="emit('open-dir', s.Name)"
+            >
+              <FolderOpen class="w-4 h-4" />
             </button>
             <button
               class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"

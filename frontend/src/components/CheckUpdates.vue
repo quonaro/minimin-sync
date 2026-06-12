@@ -135,7 +135,11 @@ function formatSize(bytes: number): string {
       v-else-if="error"
       class="p-4 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
     >
-      {{ error }}
+      <div class="flex items-center gap-2 mb-1 font-medium text-red-200">
+        <AlertTriangle class="w-4 h-4" />
+        <span>Could not check for updates</span>
+      </div>
+      <p class="text-red-300/80">{{ error }}</p>
     </div>
 
     <div v-else>

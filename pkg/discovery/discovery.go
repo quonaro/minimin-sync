@@ -21,6 +21,8 @@ var standardPaths = map[string][]string{
 	"linux": {
 		`~/.local/share/ElyPrismLauncher/instances`,
 		`~/.local/share/PrismLauncher/instances`,
+		`~/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher/instances`,
+		`~/snap/prismlauncher/current/.local/share/PrismLauncher/instances`,
 		`~/.local/share/MultiMC/instances`,
 	},
 }
@@ -52,26 +54,10 @@ func FindAllLaunchers() []string {
 	return results
 }
 
-// isValidInstancesDir checks whether dir exists and contains at least one instance.cfg.
+// isValidInstancesDir checks whether dir exists and is a directory.
 func isValidInstancesDir(dir string) bool {
 	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		cfg := filepath.Join(dir, e.Name(), "instance.cfg")
-		if _, err := os.Stat(cfg); err == nil {
-			return true
-		}
-	}
-	return false
+	return err == nil && info.IsDir()
 }
 
 // expandHome replaces leading ~ with the user's home directory.

@@ -12,12 +12,12 @@ import {
 import { ref, onMounted, onUnmounted } from "vue";
 
 interface Marker {
-  ServerID: string;
-  Token: string;
-  BaseURL: string;
-  LastSyncAt: string;
-  LastCheckAt: string;
-  ExpiresAt?: string;
+  serverId: string;
+  token: string;
+  baseUrl: string;
+  lastSyncAt: string;
+  lastCheckAt: string;
+  expiresAt?: string;
 }
 
 interface Server {
@@ -116,18 +116,18 @@ function timeLeftClass(expiresAt?: string): string {
             </span>
           </div>
           <p class="text-xs text-neutral-400 mt-0.5">
-            Last sync: {{ s.Marker?.LastSyncAt || "never" }} · Last check:
-            {{ s.Marker?.LastCheckAt || "never" }}
+            Last sync: {{ s.Marker?.lastSyncAt || "never" }} · Last check:
+            {{ s.Marker?.lastCheckAt || "never" }}
           </p>
           <p
-            v-if="s.Marker?.ExpiresAt && !isExpired(s.Marker.ExpiresAt)"
+            v-if="s.Marker?.expiresAt && !isExpired(s.Marker.expiresAt)"
             class="text-xs mt-0.5 font-medium"
-            :class="timeLeftClass(s.Marker.ExpiresAt)"
+            :class="timeLeftClass(s.Marker.expiresAt)"
           >
-            Link expires in {{ formatTimeLeft(s.Marker.ExpiresAt) }}
+            Link expires in {{ formatTimeLeft(s.Marker.expiresAt) }}
           </p>
           <p
-            v-else-if="s.Marker?.ExpiresAt && isExpired(s.Marker.ExpiresAt)"
+            v-else-if="s.Marker?.expiresAt && isExpired(s.Marker.expiresAt)"
             class="text-xs text-red-400 mt-0.5 font-medium"
           >
             Link expired — update required
@@ -137,7 +137,7 @@ function timeLeftClass(expiresAt?: string): string {
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <template v-if="!isExpired(s.Marker?.ExpiresAt)">
+          <template v-if="!isExpired(s.Marker?.expiresAt)">
             <button
               class="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
               :title="'Run ' + s.Name"

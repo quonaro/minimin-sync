@@ -364,7 +364,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 
 	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_orphan")
 	var orphan []string
-	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks", "config", "scripts", "kubejs", "defaultconfigs"} {
+	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks", "scripts", "kubejs", "defaultconfigs"} {
 		subDir := filepath.Join(localDir, sub)
 		entries, err := os.ReadDir(subDir)
 		if err != nil {

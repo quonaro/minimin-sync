@@ -11,6 +11,8 @@ import {
   ChevronUp,
   Square,
   CheckSquare2,
+  Plug,
+  Search,
 } from "@lucide/vue";
 import { EventsOn } from "../../wailsjs/runtime";
 
@@ -46,6 +48,25 @@ const applyProgress = ref(0);
 const applyTotal = ref(0);
 const applyStatus = ref("");
 
+const steps = [
+  { label: "Connecting", icon: Plug },
+  { label: "Fetching data", icon: Download },
+  { label: "Scanning files", icon: Search },
+  { label: "Scanning orphan files", icon: AlertTriangle },
+  { label: "Done", icon: CheckCircle },
+];
+
+const stepMap: Record<string, number> = {
+  connecting: 0,
+  fetching_info: 1,
+  fetching_manifest: 1,
+  scanning_files: 2,
+  scanning_orphan: 3,
+  complete: 4,
+};
+
+const currentStep = ref(0);
+
 onMounted(async () => {
   try {
     const result = await CheckUpdates(props.serverId);
@@ -60,6 +81,12 @@ onMounted(async () => {
     error.value = e?.toString?.() || "Failed to check updates";
   } finally {
     loading.value = false;
+  }
+});
+
+EventsOn("checkUpdates:status", (status: string) => {
+  if (status in stepMap) {
+    currentStep.value = stepMap[status];
   }
 });
 
@@ -129,9 +156,37 @@ function formatSize(bytes: number): string {
       <h2 class="text-xl font-bold">{{ serverId }}</h2>
     </div>
 
-    <div v-if="loading" class="flex-1 flex items-center gap-2 text-neutral-400">
-      <Loader2 class="w-5 h-5 animate-spin" />
-      Checking for updates...
+    <div
+      v-if="loading"
+      class="flex-1 flex flex-col items-center justify-center gap-6 text-neutral-400"
+    >
+      <div class="w-full max-w-xs space-y-3">
+        <div
+          v-for="(step, idx) in steps"
+          :key="idx"
+          class="flex items-center gap-3 transition-colors duration-300"
+          :class="
+            idx < currentStep
+              ? 'text-neutral-400'
+              : idx === currentStep
+                ? 'text-white'
+                : 'text-neutral-600'
+          "
+        >
+          <div class="w-5 h-5 flex items-center justify-center">
+            <Loader2
+              v-if="idx === currentStep"
+              class="w-4 h-4 animate-spin text-primary"
+            />
+            <CheckCircle
+              v-else-if="idx < currentStep"
+              class="w-4 h-4 text-emerald-400"
+            />
+            <component :is="step.icon" v-else class="w-4 h-4" />
+          </div>
+          <span class="text-sm">{{ step.label }}</span>
+        </div>
+      </div>
     </div>
 
     <div

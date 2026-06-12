@@ -246,6 +246,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 
 	instanceDir := filepath.Join(dir, serverID)
 	wailsruntime.LogInfof(a.ctx, "checking updates for %s in %s", serverID, instanceDir)
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "connecting")
 
 	marker, err := instance.ReadMarker(instanceDir)
 	if err != nil {
@@ -256,6 +257,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 
 	client := sync.NewClient(marker.BaseURL, marker.Token)
 
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "fetching_info")
 	info, err := client.FetchInfo()
 	if err != nil {
 		wailsruntime.LogErrorf(a.ctx, "fetch info failed for %s: %v", serverID, err)
@@ -264,6 +266,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 		_ = instance.WriteMarker(instanceDir, marker)
 	}
 
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "fetching_manifest")
 	manifest, err := client.FetchManifest()
 	if err != nil {
 		wailsruntime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
@@ -271,6 +274,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	}
 	wailsruntime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
 
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_files")
 	localDir := filepath.Join(instanceDir, ".minecraft")
 	var missing []sync.ManifestFile
 	var outdated []sync.ManifestFile
@@ -294,6 +298,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 		}
 	}
 
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_orphan")
 	var orphan []string
 	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks"} {
 		subDir := filepath.Join(localDir, sub)
@@ -312,6 +317,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 		}
 	}
 
+	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "complete")
 	result := map[string]interface{}{
 		"missing":  missing,
 		"outdated": outdated,

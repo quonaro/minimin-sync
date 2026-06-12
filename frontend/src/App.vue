@@ -417,6 +417,7 @@ const pageTitle = computed(() => {
       <AddServer v-else-if="currentView === 'add'" @done="goList" />
       <CheckUpdates
         v-else-if="currentView === 'check'"
+        class="flex-1 flex flex-col"
         :server-id="selectedServer"
         @back="goList"
       />

@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -430,13 +433,16 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 			manifestMap[mf.Path] = mf
 		}
 
+		wailsruntime.LogInfof(a.ctx, "ApplyUpdates selected=%d", len(selected))
 		var toDownload []sync.ManifestFile
 		var toDelete []string
 		for _, p := range selected {
 			if mf, ok := manifestMap[p]; ok {
 				toDownload = append(toDownload, mf)
+				wailsruntime.LogInfof(a.ctx, "toDownload: %s (%d bytes)", p, mf.Size)
 			} else {
 				toDelete = append(toDelete, p)
+				wailsruntime.LogInfof(a.ctx, "toDelete: %s", p)
 			}
 		}
 
@@ -489,11 +495,14 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		for i := 0; i < workers; i++ {
 			go func() {
 				for j := range jobs {
+					wailsruntime.LogInfof(a.ctx, "downloading %s -> %s", j.mf.Path, j.dest)
 					wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(j.mf.Path)))
 					if err := client.DownloadFile(j.mf.Path, j.dest, nil); err != nil {
+						wailsruntime.LogErrorf(a.ctx, "download failed %s: %v", j.mf.Path, err)
 						errChan <- err
 						return
 					}
+					wailsruntime.LogInfof(a.ctx, "download ok %s", j.mf.Path)
 					d := downloaded.Add(j.mf.Size)
 					wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", d, totalBytes)
 				}
@@ -571,6 +580,83 @@ func (a *App) OpenInstanceDir(serverID string) error {
 	return cmd.Start()
 }
 
+// findLauncherBinary tries to locate the launcher executable.
+// It first checks PATH, then falls back to standard install directories.
+func findLauncherBinary(name string) (string, error) {
+	if runtime.GOOS == "windows" {
+		if !strings.HasSuffix(name, ".exe") {
+			if p, err := exec.LookPath(name + ".exe"); err == nil {
+				return p, nil
+			}
+		}
+	}
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+
+	if runtime.GOOS == "windows" {
+		localAppData := os.Getenv("LOCALAPPDATA")
+		programFiles := os.Getenv("ProgramFiles")
+		programFilesX86 := os.Getenv("ProgramFiles(x86)")
+		var candidates []string
+		switch strings.ToLower(name) {
+		case "prismlauncher", "prism-launcher":
+			candidates = []string{
+				filepath.Join(localAppData, "Programs", "PrismLauncher", "prismlauncher.exe"),
+				filepath.Join(programFiles, "PrismLauncher", "prismlauncher.exe"),
+				filepath.Join(programFilesX86, "PrismLauncher", "prismlauncher.exe"),
+			}
+		case "elyprismlauncher":
+			candidates = []string{
+				filepath.Join(localAppData, "Programs", "ElyPrismLauncher", "elyprismlauncher.exe"),
+				filepath.Join(localAppData, "Programs", "ElyPrismLauncher", "prismlauncher.exe"),
+				filepath.Join(programFiles, "ElyPrismLauncher", "elyprismlauncher.exe"),
+				filepath.Join(programFiles, "ElyPrismLauncher", "prismlauncher.exe"),
+				filepath.Join(programFilesX86, "ElyPrismLauncher", "elyprismlauncher.exe"),
+				filepath.Join(programFilesX86, "ElyPrismLauncher", "prismlauncher.exe"),
+			}
+		case "multimc":
+			candidates = []string{
+				filepath.Join(localAppData, "Programs", "MultiMC", "MultiMC.exe"),
+				filepath.Join(programFiles, "MultiMC", "MultiMC.exe"),
+				filepath.Join(programFilesX86, "MultiMC", "MultiMC.exe"),
+			}
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				return c, nil
+			}
+		}
+	} else if runtime.GOOS == "darwin" {
+		home, _ := os.UserHomeDir()
+		var candidates []string
+		switch strings.ToLower(name) {
+		case "prismlauncher", "prism-launcher":
+			candidates = []string{
+				"/Applications/Prism Launcher.app/Contents/MacOS/prismlauncher",
+				filepath.Join(home, "Applications", "Prism Launcher.app", "Contents", "MacOS", "prismlauncher"),
+			}
+		case "elyprismlauncher":
+			candidates = []string{
+				"/Applications/ElyPrism Launcher.app/Contents/MacOS/elyprismlauncher",
+				filepath.Join(home, "Applications", "ElyPrism Launcher.app", "Contents", "MacOS", "elyprismlauncher"),
+			}
+		case "multimc":
+			candidates = []string{
+				"/Applications/MultiMC.app/Contents/MacOS/MultiMC",
+				filepath.Join(home, "Applications", "MultiMC.app", "Contents", "MacOS", "MultiMC"),
+			}
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				return c, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("launcher %q not found", name)
+}
+
 // RunServer launches the given instance via the configured launcher binary.
 func (a *App) RunServer(serverID string) error {
 	binary := a.config.Launcher
@@ -578,7 +664,7 @@ func (a *App) RunServer(serverID string) error {
 		binary = "prismlauncher"
 	}
 
-	launcher, err := exec.LookPath(binary)
+	launcher, err := findLauncherBinary(binary)
 	if err != nil {
 		var fallbacks []string
 		switch binary {
@@ -590,13 +676,13 @@ func (a *App) RunServer(serverID string) error {
 			fallbacks = []string{"multimc-qt5"}
 		}
 		for _, fb := range fallbacks {
-			launcher, err = exec.LookPath(fb)
+			launcher, err = findLauncherBinary(fb)
 			if err == nil {
 				break
 			}
 		}
 		if err != nil {
-			return fmt.Errorf("launcher %q not found in PATH", binary)
+			return fmt.Errorf("launcher %q not found in PATH or standard directories", binary)
 		}
 	}
 	cmd := exec.Command(launcher, "--launch", serverID)
@@ -658,6 +744,152 @@ func (a *App) UpdateServerURL(serverID, url string) error {
 	marker.BaseURL = baseURL
 	marker.ExpiresAt = info.ExpiresAt
 	return instance.WriteMarker(instanceDir, marker)
+}
+
+// CheckForUpdate queries GitHub for the latest release.
+func (a *App) CheckForUpdate() (map[string]interface{}, error) {
+	const owner = "quonaro"
+	const repo = "minimin-sync"
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "minimin-sync")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github api returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, err
+	}
+
+	var assetName string
+	switch {
+	case runtime.GOOS == "windows" && runtime.GOARCH == "amd64":
+		assetName = "minimin-sync-windows-amd64.exe"
+	case runtime.GOOS == "linux" && runtime.GOARCH == "amd64":
+		assetName = "minimin-sync-linux-amd64"
+	case runtime.GOOS == "darwin":
+		assetName = "minimin-sync-darwin-universal.zip"
+	default:
+		return nil, fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
+	var downloadURL string
+	for _, asset := range release.Assets {
+		if asset.Name == assetName {
+			downloadURL = asset.URL
+			break
+		}
+	}
+	if downloadURL == "" {
+		return nil, fmt.Errorf("no asset %s found in release %s", assetName, release.TagName)
+	}
+
+	available := release.TagName != version && version != "dev"
+	return map[string]interface{}{
+		"available": available,
+		"version":   release.TagName,
+		"url":       downloadURL,
+		"current":   version,
+	}, nil
+}
+
+// UpdateSelf downloads the latest release asset and replaces the running binary.
+func (a *App) UpdateSelf() error {
+	info, err := a.CheckForUpdate()
+	if err != nil {
+		return err
+	}
+	if !info["available"].(bool) && version != "dev" {
+		return fmt.Errorf("already up to date")
+	}
+
+	currentExe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	currentExe, err = filepath.EvalSymlinks(currentExe)
+	if err != nil {
+		return err
+	}
+
+	downloadURL := info["url"].(string)
+	client := &http.Client{Timeout: 120 * time.Second}
+	req, err := http.NewRequest("GET", downloadURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "minimin-sync")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	tmpFile := currentExe + ".tmp"
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		_ = os.Remove(tmpFile)
+		return err
+	}
+
+	if runtime.GOOS == "windows" {
+		scriptPath := filepath.Join(os.TempDir(), "minimin-update.bat")
+		script := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak >nul\r\nmove /Y %q %q\r\nstart \"\" %q\r\ndel \"%%~f0\"\r\n", tmpFile, currentExe, currentExe)
+		if err := os.WriteFile(scriptPath, []byte(script), 0644); err != nil {
+			_ = os.Remove(tmpFile)
+			return err
+		}
+		cmd := exec.Command("cmd", "/c", scriptPath)
+		if err := cmd.Start(); err != nil {
+			_ = os.Remove(scriptPath)
+			_ = os.Remove(tmpFile)
+			return err
+		}
+		wailsruntime.Quit(a.ctx)
+		return nil
+	}
+
+	if runtime.GOOS == "darwin" {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("auto-update is not supported on macOS; please download the latest release manually")
+	}
+
+	if err := os.Rename(tmpFile, currentExe); err != nil {
+		_ = os.Remove(tmpFile)
+		return err
+	}
+	if err := os.Chmod(currentExe, 0755); err != nil {
+		return err
+	}
+	cmd := exec.Command(currentExe, os.Args[1:]...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	wailsruntime.Quit(a.ctx)
+	return nil
 }
 
 func sanitizeName(name string) string {

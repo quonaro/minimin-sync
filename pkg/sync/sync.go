@@ -109,20 +109,20 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 	url := fmt.Sprintf("%s/api/client-archive/%s/file/%s", c.BaseURL, c.Token, filePath)
 	resp, err := c.HTTP.Get(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
-		return err
+		return fmt.Errorf("server error for %s: %w", url, err)
 	}
 
 	total := resp.ContentLength
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir failed: %w", err)
 	}
 	out, err := os.Create(destPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("create failed: %w", err)
 	}
 	defer func() { _ = out.Close() }()
 
@@ -146,6 +146,9 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 		if err != nil {
 			return err
 		}
+	}
+	if total > 0 && written != total {
+		return fmt.Errorf("incomplete download: got %d, expected %d", written, total)
 	}
 	return nil
 }

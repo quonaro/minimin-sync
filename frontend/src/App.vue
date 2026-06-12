@@ -12,6 +12,8 @@ import {
   UpdateServerURL,
   RefreshServerInfo,
   OpenInstanceDir,
+  CheckForUpdate,
+  UpdateSelf,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -39,6 +41,9 @@ const editUrl = ref("");
 const editError = ref("");
 const editLoading = ref(false);
 const autoCheckInterval = ref(5);
+const updateInfo = ref<Record<string, any> | null>(null);
+const updateChecking = ref(false);
+const updateError = ref("");
 
 if ((window as any).runtime) {
   EventsOn("updates:available", (updates: any[]) => {
@@ -226,7 +231,7 @@ function isSelected(dir: string): boolean {
 }
 
 function launcherName(dir: string): string {
-  const parts = dir.split("/");
+  const parts = dir.split(/[/\\]/);
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i].toLowerCase();
     if (p.includes("elyprismlauncher")) return "ElyPrism Launcher";
@@ -237,7 +242,7 @@ function launcherName(dir: string): string {
 }
 
 function launcherType(dir: string): string {
-  const parts = dir.split("/");
+  const parts = dir.split(/[/\\]/);
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i].toLowerCase();
     if (p.includes("elyprismlauncher")) return "elyprismlauncher";
@@ -245,6 +250,28 @@ function launcherType(dir: string): string {
     if (p.includes("multimc")) return "multimc";
   }
   return "";
+}
+
+async function checkUpdate() {
+  updateChecking.value = true;
+  updateError.value = "";
+  try {
+    updateInfo.value = await CheckForUpdate();
+  } catch (e: any) {
+    updateError.value = e?.toString?.() || "Failed to check for updates";
+    updateInfo.value = null;
+  } finally {
+    updateChecking.value = false;
+  }
+}
+
+async function doUpdate() {
+  updateError.value = "";
+  try {
+    await UpdateSelf();
+  } catch (e: any) {
+    updateError.value = e?.toString?.() || "Update failed";
+  }
 }
 
 const pageTitle = computed(() => {
@@ -422,6 +449,60 @@ const pageTitle = computed(() => {
             min="0"
             class="w-full px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
           />
+        </div>
+
+        <div class="relative mb-4 mt-6">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-neutral-700"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="bg-neutral-900 px-2 text-neutral-500">app</span>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <div
+            v-if="updateChecking"
+            class="flex items-center gap-2 text-sm text-neutral-400 py-2"
+          >
+            <Loader2 class="w-4 h-4 animate-spin" />
+            Checking for updates...
+          </div>
+          <div
+            v-else-if="updateError"
+            class="p-3 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
+          >
+            {{ updateError }}
+          </div>
+          <div v-else-if="updateInfo" class="space-y-2">
+            <p class="text-sm text-neutral-300">
+              Current:
+              <span class="font-mono text-xs">{{ updateInfo.current }}</span>
+            </p>
+            <p
+              v-if="updateInfo.available"
+              class="text-sm text-emerald-400 font-medium"
+            >
+              New version available: {{ updateInfo.version }}
+            </p>
+            <p v-else class="text-sm text-neutral-500">
+              Up to date ({{ updateInfo.version }})
+            </p>
+          </div>
+          <button
+            v-if="!updateInfo && !updateChecking"
+            class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
+            @click="checkUpdate"
+          >
+            Check for Update
+          </button>
+          <button
+            v-else-if="updateInfo?.available"
+            class="w-full py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
+            @click="doUpdate"
+          >
+            Update Now
+          </button>
         </div>
 
         <button

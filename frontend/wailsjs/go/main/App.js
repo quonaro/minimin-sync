@@ -10,6 +10,10 @@ export function ApplyUpdates(arg1, arg2) {
   return window['go']['main']['App']['ApplyUpdates'](arg1, arg2);
 }
 
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
+}
+
 export function CheckUpdates(arg1) {
   return window['go']['main']['App']['CheckUpdates'](arg1);
 }
@@ -56,6 +60,10 @@ export function SaveConfig(arg1) {
 
 export function SelectInstancesDir() {
   return window['go']['main']['App']['SelectInstancesDir']();
+}
+
+export function UpdateSelf() {
+  return window['go']['main']['App']['UpdateSelf']();
 }
 
 export function UpdateServerURL(arg1, arg2) {

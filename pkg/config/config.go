@@ -8,8 +8,9 @@ import (
 
 // Config is the persistent app configuration.
 type Config struct {
-	InstancesDir string `json:"instancesDir"`
-	Launcher     string `json:"launcher"`
+	InstancesDir             string `json:"instancesDir"`
+	Launcher                 string `json:"launcher"`
+	AutoCheckIntervalMinutes int    `json:"autoCheckIntervalMinutes"`
 }
 
 // ConfigDir returns the directory where config is stored.

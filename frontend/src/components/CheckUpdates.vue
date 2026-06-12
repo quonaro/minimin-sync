@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { CheckUpdates, ApplyUpdates } from "../../wailsjs/go/main/App";
+import { ref, onMounted, onUnmounted } from "vue";
+import {
+  CheckUpdates,
+  ApplyUpdates,
+  IsOperationRunning,
+} from "../../wailsjs/go/main/App";
 import {
   Loader2,
   ArrowLeft,
@@ -47,6 +51,7 @@ const applying = ref(false);
 const applyProgress = ref(0);
 const applyTotal = ref(0);
 const applyStatus = ref("");
+const opRunning = ref(false);
 
 const steps = [
   { label: "Connecting", icon: Plug },
@@ -67,6 +72,8 @@ const stepMap: Record<string, number> = {
 
 const currentStep = ref(0);
 
+let pollTimer: ReturnType<typeof setInterval>;
+
 onMounted(async () => {
   try {
     const result = await CheckUpdates(props.serverId);
@@ -82,6 +89,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+
+  pollTimer = setInterval(async () => {
+    opRunning.value = await IsOperationRunning();
+  }, 1000);
+});
+
+onUnmounted(() => {
+  clearInterval(pollTimer);
 });
 
 EventsOn("checkUpdates:status", (status: string) => {
@@ -131,6 +146,10 @@ function deselectAll() {
 async function apply() {
   const paths = Array.from(selected.value);
   if (paths.length === 0) return;
+  if (await IsOperationRunning()) {
+    error.value = "Another operation is already in progress";
+    return;
+  }
   applying.value = true;
   applyProgress.value = 0;
   applyStatus.value = "starting...";
@@ -347,12 +366,19 @@ function formatSize(bytes: number): string {
 
       <div class="flex-shrink-0 pt-4 max-w-3xl w-full mx-auto">
         <button
-          v-if="!applying && selected.size > 0"
+          v-if="!applying && !opRunning && selected.size > 0"
           class="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium transition-colors"
           @click="apply"
         >
           Apply {{ selected.size }} update(s)
         </button>
+
+        <div
+          v-else-if="opRunning"
+          class="text-center text-sm text-neutral-500 py-3"
+        >
+          Another operation is in progress...
+        </div>
 
         <div v-if="applying" class="space-y-2">
           <div class="flex items-center gap-2 text-sm text-neutral-300">

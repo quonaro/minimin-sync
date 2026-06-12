@@ -197,6 +197,7 @@ func (c *Client) DownloadArchive(format string, progress func(downloaded, total 
 }
 
 // ExtractAll extracts every entry from a zip archive into destDir.
+// Entries with ".." or absolute paths are skipped to prevent Zip Slip.
 func ExtractAll(zipPath, destDir string) error {
 	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -205,7 +206,11 @@ func ExtractAll(zipPath, destDir string) error {
 	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
-		target := filepath.Join(destDir, f.Name)
+		name := filepath.FromSlash(f.Name)
+		if !filepath.IsLocal(name) {
+			continue
+		}
+		target := filepath.Join(destDir, name)
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
@@ -232,6 +237,27 @@ func ExtractAll(zipPath, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// RestoreBackup moves files from backupDir back into destDir, preserving relative structure.
+func RestoreBackup(backupDir, destDir string) error {
+	return filepath.WalkDir(backupDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(backupDir, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destDir, rel)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		return os.Rename(path, target)
+	})
 }
 
 // ComputeSHA256 computes the sha256 hash of a file.

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"minimin-sync/pkg/config"
@@ -20,8 +21,9 @@ import (
 
 // App struct
 type App struct {
-	ctx    context.Context
-	config *config.Config
+	ctx       context.Context
+	config    *config.Config
+	opRunning atomic.Bool
 }
 
 // NewApp creates a new App application struct
@@ -48,7 +50,11 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) autoCheckLoop() {
-	ticker := time.NewTicker(5 * time.Minute)
+	interval := a.config.AutoCheckIntervalMinutes
+	if interval <= 0 {
+		interval = 5
+	}
+	ticker := time.NewTicker(time.Duration(interval) * time.Minute)
 	defer ticker.Stop()
 
 	a.runAutoCheck()
@@ -61,6 +67,11 @@ func (a *App) autoCheckLoop() {
 			return
 		}
 	}
+}
+
+// IsOperationRunning reports whether AddServer or ApplyUpdates is active.
+func (a *App) IsOperationRunning() bool {
+	return a.opRunning.Load()
 }
 
 func (a *App) runAutoCheck() {
@@ -173,15 +184,21 @@ func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
 
 // AddServer installs a new server from a prism archive URL asynchronously.
 func (a *App) AddServer(url string) error {
+	if !a.opRunning.CompareAndSwap(false, true) {
+		return fmt.Errorf("another operation is already in progress")
+	}
+
 	if !strings.Contains(url, "?format=") {
 		url = url + "?format=prism"
 	}
 	token, baseURL, err := parseArchiveURL(url)
 	if err != nil {
+		a.opRunning.Store(false)
 		return err
 	}
 
 	go func() {
+		defer a.opRunning.Store(false)
 		client := sync.NewClient(baseURL, token)
 
 		wailsruntime.EventsEmit(a.ctx, "addServer:status", "fetching info")
@@ -349,7 +366,13 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		return err
 	}
 
+	if !a.opRunning.CompareAndSwap(false, true) {
+		return fmt.Errorf("another operation is already in progress")
+	}
+
 	go func() {
+		defer a.opRunning.Store(false)
+
 		client := sync.NewClient(marker.BaseURL, marker.Token)
 
 		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "fetching manifest")
@@ -395,19 +418,48 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		for _, mf := range toDownload {
 			totalBytes += mf.Size
 		}
-		var downloadedBytes int64
 
+		const workers = 4
+		type job struct {
+			mf   sync.ManifestFile
+			dest string
+		}
+		jobs := make(chan job, len(toDownload))
 		for _, mf := range toDownload {
-			wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(mf.Path)))
 			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
-			err := client.DownloadFile(mf.Path, dest, func(d, t int64) {
-				wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", downloadedBytes+d, totalBytes)
-			})
-			if err != nil {
-				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
-				return
+			jobs <- job{mf: mf, dest: dest}
+		}
+		close(jobs)
+
+		var downloaded atomic.Int64
+		errChan := make(chan error, workers)
+
+		for i := 0; i < workers; i++ {
+			go func() {
+				for j := range jobs {
+					wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(j.mf.Path)))
+					if err := client.DownloadFile(j.mf.Path, j.dest, nil); err != nil {
+						errChan <- err
+						return
+					}
+					d := downloaded.Add(j.mf.Size)
+					wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", d, totalBytes)
+				}
+				errChan <- nil
+			}()
+		}
+
+		var downloadErr error
+		for i := 0; i < workers; i++ {
+			if err := <-errChan; err != nil && downloadErr == nil {
+				downloadErr = err
 			}
-			downloadedBytes += mf.Size
+		}
+
+		if downloadErr != nil {
+			_ = sync.RestoreBackup(backupDir, instanceDir)
+			wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", downloadErr.Error())
+			return
 		}
 
 		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "verifying files")
@@ -415,6 +467,7 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
 			hash, err := sync.ComputeSHA256(dest)
 			if err != nil || hash != mf.SHA256 {
+				_ = sync.RestoreBackup(backupDir, instanceDir)
 				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("hash mismatch for %s", mf.Path))
 				return
 			}

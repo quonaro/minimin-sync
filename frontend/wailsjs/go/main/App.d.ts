@@ -16,6 +16,8 @@ export function GetConfig():Promise<config.Config>;
 
 export function GetServers():Promise<Array<instance.ScannedInstance>>;
 
+export function IsOperationRunning():Promise<boolean>;
+
 export function OpenInstanceDir(arg1:string):Promise<void>;
 
 export function PreviewServer(arg1:string):Promise<sync.InfoResponse>;

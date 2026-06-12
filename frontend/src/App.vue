@@ -38,6 +38,7 @@ const editTarget = ref("");
 const editUrl = ref("");
 const editError = ref("");
 const editLoading = ref(false);
+const autoCheckInterval = ref(5);
 
 EventsOn("updates:available", (updates: any[]) => {
   const map: Record<string, number> = {};
@@ -59,6 +60,7 @@ onErrorCaptured((err) => {
 
 onMounted(async () => {
   const cfg = await GetConfig();
+  autoCheckInterval.value = cfg.autoCheckIntervalMinutes || 5;
   if (cfg.instancesDir) {
     instancesDir.value = cfg.instancesDir;
     currentView.value = "list";
@@ -94,6 +96,7 @@ async function selectLauncher(dir: string) {
     new config.Config({
       instancesDir: dir,
       launcher: selectedLauncher.value,
+      autoCheckIntervalMinutes: autoCheckInterval.value,
     }),
   );
   currentView.value = "list";
@@ -115,6 +118,7 @@ async function saveDir() {
     new config.Config({
       instancesDir: instancesDir.value,
       launcher: selectedLauncher.value,
+      autoCheckIntervalMinutes: autoCheckInterval.value,
     }),
   );
   currentView.value = "list";
@@ -211,6 +215,7 @@ async function goSetup() {
   const cfg = await GetConfig();
   instancesDir.value = cfg.instancesDir || "";
   selectedLauncher.value = cfg.launcher || "";
+  autoCheckInterval.value = cfg.autoCheckIntervalMinutes || 5;
   await scanLaunchers();
 }
 
@@ -290,7 +295,7 @@ const pageTitle = computed(() => {
 
       <div class="flex items-center gap-3 w-1/3 justify-end">
         <button
-          v-if="currentView === 'setup'"
+          v-if="currentView === 'setup' || currentView === 'add'"
           class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
           @click="goList"
         >
@@ -394,6 +399,27 @@ const pageTitle = computed(() => {
           >
             Save
           </button>
+        </div>
+
+        <div class="relative mb-4 mt-6">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-neutral-700"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="bg-neutral-900 px-2 text-neutral-500">auto-check</span>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-sm text-neutral-400 mb-1">
+            Check interval (minutes, 0 = disabled)
+          </label>
+          <input
+            v-model.number="autoCheckInterval"
+            type="number"
+            min="0"
+            class="w-full px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+          />
         </div>
 
         <button

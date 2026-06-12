@@ -26,6 +26,10 @@ export function GetServers() {
   return window['go']['main']['App']['GetServers']();
 }
 
+export function IsOperationRunning() {
+  return window['go']['main']['App']['IsOperationRunning']();
+}
+
 export function OpenInstanceDir(arg1) {
   return window['go']['main']['App']['OpenInstanceDir'](arg1);
 }

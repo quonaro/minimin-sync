@@ -3,6 +3,7 @@ export namespace config {
 	export class Config {
 	    instancesDir: string;
 	    launcher: string;
+	    autoCheckIntervalMinutes: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Config(source);
@@ -12,6 +13,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.instancesDir = source["instancesDir"];
 	        this.launcher = source["launcher"];
+	        this.autoCheckIntervalMinutes = source["autoCheckIntervalMinutes"];
 	    }
 	}
 

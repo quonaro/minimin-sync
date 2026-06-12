@@ -338,19 +338,20 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	wailsruntime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
 
 	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_files")
-	localDir := filepath.Join(instanceDir, ".minecraft")
+	mcDir := "minecraft"
+	localDir := filepath.Join(instanceDir, mcDir)
 	var missing []sync.ManifestFile
 	var outdated []sync.ManifestFile
 	localFiles := make(map[string]bool)
 
 	for _, mf := range manifest.Files {
-		localPath := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
+		localPath := resolveMcPath(instanceDir, mf.Path)
 		info, err := os.Stat(localPath)
 		if err != nil {
 			missing = append(missing, mf)
 			continue
 		}
-		localFiles[mf.Path] = true
+		localFiles[normalizeMcPath(mf.Path)] = true
 		if info.Size() != mf.Size {
 			outdated = append(outdated, mf)
 			continue
@@ -373,7 +374,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 			if e.IsDir() {
 				continue
 			}
-			relPath := filepath.ToSlash(filepath.Join(".minecraft", sub, e.Name()))
+			relPath := filepath.ToSlash(filepath.Join(mcDir, sub, e.Name()))
 			if !localFiles[relPath] {
 				orphan = append(orphan, relPath)
 			}
@@ -450,16 +451,17 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		_ = os.RemoveAll(backupDir)
 
 		for _, p := range selected {
-			src := filepath.Join(instanceDir, filepath.FromSlash(p))
+			src := resolveMcPath(instanceDir, p)
 			if _, err := os.Stat(src); err == nil {
-				dst := filepath.Join(backupDir, filepath.FromSlash(p))
+				rel, _ := filepath.Rel(instanceDir, src)
+				dst := filepath.Join(backupDir, rel)
 				_ = os.MkdirAll(filepath.Dir(dst), 0o755)
 				_ = os.Rename(src, dst)
 			}
 		}
 
 		for _, p := range toDelete {
-			target := filepath.Join(instanceDir, filepath.FromSlash(p))
+			target := resolveMcPath(instanceDir, p)
 			_ = os.Remove(target)
 		}
 
@@ -484,7 +486,7 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		}
 		jobs := make(chan job, len(toDownload))
 		for _, mf := range toDownload {
-			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
+			dest := resolveMcPath(instanceDir, mf.Path)
 			jobs <- job{mf: mf, dest: dest}
 		}
 		close(jobs)
@@ -525,7 +527,7 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 
 		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "verifying files")
 		for _, mf := range toDownload {
-			dest := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
+			dest := resolveMcPath(instanceDir, mf.Path)
 			hash, err := sync.ComputeSHA256(dest)
 			if err != nil || hash != mf.SHA256 {
 				_ = sync.RestoreBackup(backupDir, instanceDir)
@@ -578,6 +580,23 @@ func (a *App) OpenInstanceDir(serverID string) error {
 		cmd = exec.Command("xdg-open", instanceDir)
 	}
 	return cmd.Start()
+}
+
+// resolveMcPath turns a manifest path into an absolute filesystem path.
+// The server manifest uses ".minecraft/..." but Prism Launcher stores files in "minecraft/...".
+func resolveMcPath(instanceDir string, manifestPath string) string {
+	if strings.HasPrefix(manifestPath, ".minecraft/") {
+		return filepath.Join(instanceDir, "minecraft", filepath.FromSlash(manifestPath[len(".minecraft/"):]))
+	}
+	return filepath.Join(instanceDir, filepath.FromSlash(manifestPath))
+}
+
+// normalizeMcPath adapts a manifest path for local key comparison.
+func normalizeMcPath(manifestPath string) string {
+	if strings.HasPrefix(manifestPath, ".minecraft/") {
+		return "minecraft/" + manifestPath[len(".minecraft/"):]
+	}
+	return manifestPath
 }
 
 // findLauncherBinary tries to locate the launcher executable.

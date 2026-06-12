@@ -79,6 +79,13 @@ function timeLeftClass(expiresAt?: string): string {
   if (diff < 86400000) return "text-amber-400";
   return "text-emerald-400";
 }
+
+function formatDateTime(iso?: string): string {
+  if (!iso) return "never";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
 </script>
 
 <template>
@@ -91,10 +98,12 @@ function timeLeftClass(expiresAt?: string): string {
       <p class="text-lg font-medium text-neutral-300">No synced servers</p>
       <p class="text-sm mt-1 mb-6">Add a server to get started</p>
       <button
-        class="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-2"
+        class="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
         @click="emit('add')"
       >
-        <Plus class="w-4 h-4" />
+        <Plus
+          class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+        />
         Add Server
       </button>
     </div>
@@ -116,8 +125,8 @@ function timeLeftClass(expiresAt?: string): string {
             </span>
           </div>
           <p class="text-xs text-neutral-400 mt-0.5">
-            Last sync: {{ s.Marker?.lastSyncAt || "never" }} · Last check:
-            {{ s.Marker?.lastCheckAt || "never" }}
+            Last sync: {{ formatDateTime(s.Marker?.lastSyncAt) }} · Last check:
+            {{ formatDateTime(s.Marker?.lastCheckAt) }}
           </p>
           <p
             v-if="s.Marker?.expiresAt && !isExpired(s.Marker.expiresAt)"
@@ -139,46 +148,60 @@ function timeLeftClass(expiresAt?: string): string {
         <div class="flex items-center gap-2">
           <template v-if="!isExpired(s.Marker?.expiresAt)">
             <button
-              class="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              class="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors group"
               :title="'Run ' + s.Name"
               @click="emit('run', s.Name)"
             >
-              <Play class="w-4 h-4" />
+              <Play
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
             </button>
             <button
-              class="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+              class="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-1.5 group"
               @click="emit('check', s.Name)"
             >
-              <RefreshCw class="w-4 h-4" />
-              Check
+              <RefreshCw
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-180"
+              />
+              {{
+                pendingUpdates && pendingUpdates[s.Name] ? "Update" : "Check"
+              }}
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
+              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors group"
               :title="'Open folder'"
               @click="emit('open-dir', s.Name)"
             >
-              <FolderOpen class="w-4 h-4" />
+              <FolderOpen
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors"
+              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors group"
               :title="'Edit link'"
               @click="emit('edit', s.Name)"
             >
-              <Pencil class="w-4 h-4" />
+              <Pencil
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-red-600 text-neutral-400 hover:text-white transition-colors"
+              class="p-2 rounded-lg bg-neutral-700 hover:bg-red-600 text-neutral-400 hover:text-white transition-colors group"
               @click="emit('delete', s.Name)"
             >
-              <Trash2 class="w-4 h-4" />
+              <Trash2
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
             </button>
           </template>
           <template v-else>
             <button
-              class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+              class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium transition-colors flex items-center gap-1.5 group"
               @click="emit('edit', s.Name)"
             >
-              <Pencil class="w-4 h-4" />
+              <Pencil
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
               Edit link
             </button>
           </template>
@@ -187,10 +210,12 @@ function timeLeftClass(expiresAt?: string): string {
 
       <div class="flex justify-center pt-2">
         <button
-          class="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium transition-colors flex items-center gap-2"
+          class="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
           @click="emit('add')"
         >
-          <Plus class="w-4 h-4" />
+          <Plus
+            class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+          />
           Add Server
         </button>
       </div>

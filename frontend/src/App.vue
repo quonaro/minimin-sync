@@ -299,10 +299,12 @@ const pageTitle = computed(() => {
         </button>
         <button
           v-else
-          class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 transition-colors"
+          class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 transition-colors group"
           @click="goSetup"
         >
-          <Settings class="w-4 h-4" />
+          <Settings
+            class="w-4 h-4 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-90"
+          />
         </button>
       </div>
     </header>

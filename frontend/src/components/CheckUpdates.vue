@@ -9,6 +9,8 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  Square,
+  CheckSquare2,
 } from "@lucide/vue";
 import { EventsOn } from "../../wailsjs/runtime";
 
@@ -53,6 +55,7 @@ onMounted(async () => {
 
     for (const f of missing.value) selected.value.add(f.path);
     for (const f of outdated.value) selected.value.add(f.path);
+    for (const f of orphan.value) selected.value.add(f);
   } catch (e: any) {
     error.value = e?.toString?.() || "Failed to check updates";
   } finally {
@@ -115,8 +118,8 @@ function formatSize(bytes: number): string {
 </script>
 
 <template>
-  <div>
-    <div class="flex items-center gap-3 mb-6">
+  <div class="h-full flex flex-col">
+    <div class="flex items-center gap-3 mb-6 flex-shrink-0">
       <button
         class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 transition-colors"
         @click="emit('back')"
@@ -126,14 +129,14 @@ function formatSize(bytes: number): string {
       <h2 class="text-xl font-bold">{{ serverId }}</h2>
     </div>
 
-    <div v-if="loading" class="flex items-center gap-2 text-neutral-400">
+    <div v-if="loading" class="flex-1 flex items-center gap-2 text-neutral-400">
       <Loader2 class="w-5 h-5 animate-spin" />
       Checking for updates...
     </div>
 
     <div
       v-else-if="error"
-      class="p-4 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
+      class="flex-1 p-4 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
     >
       <div class="flex items-center gap-2 mb-1 font-medium text-red-200">
         <AlertTriangle class="w-4 h-4" />
@@ -142,8 +145,8 @@ function formatSize(bytes: number): string {
       <p class="text-red-300/80">{{ error }}</p>
     </div>
 
-    <div v-else>
-      <div class="flex items-center justify-between mb-4">
+    <div v-else class="flex-1 flex flex-col min-h-0">
+      <div class="flex items-center justify-between mb-4 flex-shrink-0">
         <p class="text-sm text-neutral-400">
           {{ selected.size }} file(s) selected
         </p>
@@ -163,119 +166,140 @@ function formatSize(bytes: number): string {
         </div>
       </div>
 
-      <div
-        v-if="
-          missing.length === 0 && outdated.length === 0 && orphan.length === 0
-        "
-        class="text-center py-12 text-neutral-500"
-      >
-        <CheckCircle class="w-10 h-10 mx-auto mb-2" />
-        <p>Everything is up to date</p>
+      <div class="flex-1 overflow-auto min-h-0">
+        <div
+          v-if="
+            missing.length === 0 && outdated.length === 0 && orphan.length === 0
+          "
+          class="text-center py-12 text-neutral-500"
+        >
+          <CheckCircle class="w-10 h-10 mx-auto mb-2" />
+          <p>Everything is up to date</p>
+        </div>
+
+        <div v-else class="space-y-4 max-w-3xl">
+          <div v-if="missing.length > 0">
+            <button
+              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+              @click="toggleSection('missing')"
+            >
+              <Download class="w-4 h-4 text-emerald-400" />
+              Missing ({{ missing.length }})
+              <component
+                :is="collapsed.missing ? ChevronDown : ChevronUp"
+                class="w-4 h-4 ml-auto text-neutral-500"
+              />
+            </button>
+            <div v-if="!collapsed.missing" class="space-y-1">
+              <label
+                v-for="f in missing"
+                :key="f.path"
+                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+              >
+                <div
+                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                  :class="
+                    selected.has(f.path)
+                      ? 'text-primary'
+                      : 'text-neutral-500 hover:text-neutral-400'
+                  "
+                >
+                  <CheckSquare2 v-if="selected.has(f.path)" class="w-5 h-5" />
+                  <Square v-else class="w-5 h-5" />
+                </div>
+                <span class="flex-1 text-sm truncate">{{ f.path }}</span>
+                <span class="text-xs text-neutral-500">{{
+                  formatSize(f.size)
+                }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="outdated.length > 0">
+            <button
+              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+              @click="toggleSection('outdated')"
+            >
+              <AlertTriangle class="w-4 h-4 text-amber-400" />
+              Outdated ({{ outdated.length }})
+              <component
+                :is="collapsed.outdated ? ChevronDown : ChevronUp"
+                class="w-4 h-4 ml-auto text-neutral-500"
+              />
+            </button>
+            <div v-if="!collapsed.outdated" class="space-y-1">
+              <label
+                v-for="f in outdated"
+                :key="f.path"
+                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+              >
+                <div
+                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                  :class="
+                    selected.has(f.path)
+                      ? 'text-primary'
+                      : 'text-neutral-500 hover:text-neutral-400'
+                  "
+                >
+                  <CheckSquare2 v-if="selected.has(f.path)" class="w-5 h-5" />
+                  <Square v-else class="w-5 h-5" />
+                </div>
+                <span class="flex-1 text-sm truncate">{{ f.path }}</span>
+                <span class="text-xs text-neutral-500">{{
+                  formatSize(f.size)
+                }}</span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="orphan.length > 0">
+            <button
+              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+              @click="toggleSection('orphan')"
+            >
+              <AlertTriangle class="w-4 h-4 text-red-400" />
+              Orphan ({{ orphan.length }})
+              <component
+                :is="collapsed.orphan ? ChevronDown : ChevronUp"
+                class="w-4 h-4 ml-auto text-neutral-500"
+              />
+            </button>
+            <div v-if="!collapsed.orphan" class="space-y-1">
+              <label
+                v-for="f in orphan"
+                :key="f"
+                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+              >
+                <div
+                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                  :class="
+                    selected.has(f)
+                      ? 'text-primary'
+                      : 'text-neutral-500 hover:text-neutral-400'
+                  "
+                >
+                  <CheckSquare2 v-if="selected.has(f)" class="w-5 h-5" />
+                  <Square v-else class="w-5 h-5" />
+                </div>
+                <span class="flex-1 text-sm truncate text-red-300">{{
+                  f
+                }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div v-else class="space-y-4 max-w-3xl">
-        <div v-if="missing.length > 0">
-          <button
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-            @click="toggleSection('missing')"
-          >
-            <Download class="w-4 h-4 text-emerald-400" />
-            Missing ({{ missing.length }})
-            <component
-              :is="collapsed.missing ? ChevronDown : ChevronUp"
-              class="w-4 h-4 ml-auto text-neutral-500"
-            />
-          </button>
-          <div v-if="!collapsed.missing" class="space-y-1">
-            <label
-              v-for="f in missing"
-              :key="f.path"
-              class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                :checked="selected.has(f.path)"
-                class="rounded border-neutral-600 bg-neutral-700 text-primary"
-                @change="toggle(f.path)"
-              />
-              <span class="flex-1 text-sm truncate">{{ f.path }}</span>
-              <span class="text-xs text-neutral-500">{{
-                formatSize(f.size)
-              }}</span>
-            </label>
-          </div>
-        </div>
-
-        <div v-if="outdated.length > 0">
-          <button
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-            @click="toggleSection('outdated')"
-          >
-            <AlertTriangle class="w-4 h-4 text-amber-400" />
-            Outdated ({{ outdated.length }})
-            <component
-              :is="collapsed.outdated ? ChevronDown : ChevronUp"
-              class="w-4 h-4 ml-auto text-neutral-500"
-            />
-          </button>
-          <div v-if="!collapsed.outdated" class="space-y-1">
-            <label
-              v-for="f in outdated"
-              :key="f.path"
-              class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                :checked="selected.has(f.path)"
-                class="rounded border-neutral-600 bg-neutral-700 text-primary"
-                @change="toggle(f.path)"
-              />
-              <span class="flex-1 text-sm truncate">{{ f.path }}</span>
-              <span class="text-xs text-neutral-500">{{
-                formatSize(f.size)
-              }}</span>
-            </label>
-          </div>
-        </div>
-
-        <div v-if="orphan.length > 0">
-          <button
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-            @click="toggleSection('orphan')"
-          >
-            <AlertTriangle class="w-4 h-4 text-red-400" />
-            Orphan ({{ orphan.length }})
-            <component
-              :is="collapsed.orphan ? ChevronDown : ChevronUp"
-              class="w-4 h-4 ml-auto text-neutral-500"
-            />
-          </button>
-          <div v-if="!collapsed.orphan" class="space-y-1">
-            <label
-              v-for="f in orphan"
-              :key="f"
-              class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                :checked="selected.has(f)"
-                class="rounded border-neutral-600 bg-neutral-700 text-primary"
-                @change="toggle(f)"
-              />
-              <span class="flex-1 text-sm truncate text-red-300">{{ f }}</span>
-            </label>
-          </div>
-        </div>
-
+      <div class="flex-shrink-0 pt-4 max-w-3xl w-full mx-auto">
         <button
           v-if="!applying && selected.size > 0"
-          class="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium transition-colors mt-4"
+          class="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium transition-colors"
           @click="apply"
         >
           Apply {{ selected.size }} update(s)
         </button>
 
-        <div v-if="applying" class="space-y-2 mt-4">
+        <div v-if="applying" class="space-y-2">
           <div class="flex items-center gap-2 text-sm text-neutral-300">
             <Loader2 class="w-4 h-4 animate-spin" />
             <span class="capitalize">{{ applyStatus }}</span>

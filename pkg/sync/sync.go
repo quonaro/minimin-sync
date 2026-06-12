@@ -105,7 +105,23 @@ func (c *Client) FetchManifest() (*ManifestResponse, error) {
 }
 
 // DownloadFile downloads a single file by manifest path and writes it to destPath.
+// It retries transient failures up to 3 times with exponential backoff.
 func (c *Client) DownloadFile(filePath string, destPath string, progress func(downloaded, total int64)) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+		_ = os.Remove(destPath)
+		lastErr = c.downloadFileOnce(filePath, destPath, progress)
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("download failed after 3 attempts: %w", lastErr)
+}
+
+func (c *Client) downloadFileOnce(filePath string, destPath string, progress func(downloaded, total int64)) error {
 	url := fmt.Sprintf("%s/api/client-archive/%s/file/%s", c.BaseURL, c.Token, filePath)
 	resp, err := c.HTTP.Get(url)
 	if err != nil {
@@ -114,6 +130,12 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 	defer func() { _ = resp.Body.Close() }()
 	if err := checkStatus(resp); err != nil {
 		return fmt.Errorf("server error for %s: %w", url, err)
+	}
+
+	// Reject HTML error pages masquerading as files.
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") {
+		return fmt.Errorf("server returned HTML page instead of file (content-type: %s)", contentType)
 	}
 
 	total := resp.ContentLength
@@ -126,7 +148,24 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 	}
 	defer func() { _ = out.Close() }()
 
-	written := int64(0)
+	// For .jar/.zip entries, verify the ZIP magic header (PK\x03\x04) before streaming the rest.
+	isZip := strings.HasSuffix(strings.ToLower(filePath), ".jar") || strings.HasSuffix(strings.ToLower(filePath), ".zip")
+	var written int64
+	if isZip && total != 0 {
+		peek := make([]byte, 4)
+		n, err := io.ReadFull(resp.Body, peek)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return fmt.Errorf("failed to read file header: %w", err)
+		}
+		if n >= 2 && !(peek[0] == 'P' && peek[1] == 'K') {
+			return fmt.Errorf("downloaded file is not a valid ZIP/JAR (starts with %q), server may have returned an error page", string(peek[:n]))
+		}
+		if _, werr := out.Write(peek[:n]); werr != nil {
+			return werr
+		}
+		written = int64(n)
+	}
+
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := resp.Body.Read(buf)
@@ -149,6 +188,15 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 	}
 	if total > 0 && written != total {
 		return fmt.Errorf("incomplete download: got %d, expected %d", written, total)
+	}
+	// For ZIP/JAR entries, verify the archive can be opened fully (not just header).
+	if isZip {
+		zr, err := zip.OpenReader(destPath)
+		if err != nil {
+			_ = os.Remove(destPath)
+			return fmt.Errorf("downloaded file %s is not a valid ZIP/JAR: %w", destPath, err)
+		}
+		_ = zr.Close()
 	}
 	return nil
 }

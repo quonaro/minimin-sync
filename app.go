@@ -440,10 +440,10 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		for _, p := range selected {
 			if mf, ok := manifestMap[p]; ok {
 				toDownload = append(toDownload, mf)
-				wailsruntime.LogInfof(a.ctx, "toDownload: %s (%d bytes)", p, mf.Size)
+				wailsruntime.LogInfof(a.ctx, "toDownload: %s (%d bytes)", resolveMcPath(instanceDir, p), mf.Size)
 			} else {
 				toDelete = append(toDelete, p)
-				wailsruntime.LogInfof(a.ctx, "toDelete: %s", p)
+				wailsruntime.LogInfof(a.ctx, "toDelete: %s", resolveMcPath(instanceDir, p))
 			}
 		}
 
@@ -497,14 +497,14 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		for i := 0; i < workers; i++ {
 			go func() {
 				for j := range jobs {
-					wailsruntime.LogInfof(a.ctx, "downloading %s -> %s", j.mf.Path, j.dest)
-					wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(j.mf.Path)))
+					wailsruntime.LogInfof(a.ctx, "downloading %s", j.dest)
+					wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(j.dest)))
 					if err := client.DownloadFile(j.mf.Path, j.dest, nil); err != nil {
-						wailsruntime.LogErrorf(a.ctx, "download failed %s: %v", j.mf.Path, err)
+						wailsruntime.LogErrorf(a.ctx, "download failed %s: %v", j.dest, err)
 						errChan <- err
 						return
 					}
-					wailsruntime.LogInfof(a.ctx, "download ok %s", j.mf.Path)
+					wailsruntime.LogInfof(a.ctx, "download ok %s", j.dest)
 					d := downloaded.Add(j.mf.Size)
 					wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", d, totalBytes)
 				}
@@ -531,7 +531,7 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 			hash, err := sync.ComputeSHA256(dest)
 			if err != nil || hash != mf.SHA256 {
 				_ = sync.RestoreBackup(backupDir, instanceDir)
-				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("hash mismatch for %s", mf.Path))
+				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("hash mismatch for %s", dest))
 				return
 			}
 		}

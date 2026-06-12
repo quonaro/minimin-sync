@@ -150,6 +150,20 @@ func (c *Client) DownloadFile(filePath string, destPath string, progress func(do
 	return nil
 }
 
+// ArchiveSize performs a HEAD request to determine the archive size.
+func (c *Client) ArchiveSize(format string) (int64, error) {
+	url := fmt.Sprintf("%s/api/client-archive/%s?format=%s", c.BaseURL, c.Token, format)
+	resp, err := c.HTTP.Head(url)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := checkStatus(resp); err != nil {
+		return 0, err
+	}
+	return resp.ContentLength, nil
+}
+
 // DownloadArchive downloads the archive to a temporary file and reports progress.
 func (c *Client) DownloadArchive(format string, progress func(downloaded, total int64)) (string, error) {
 	url := fmt.Sprintf("%s/api/client-archive/%s?format=%s", c.BaseURL, c.Token, format)

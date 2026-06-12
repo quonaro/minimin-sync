@@ -8,6 +8,7 @@ import {
   Play,
   Pencil,
   FolderOpen,
+  AlertTriangle,
 } from "@lucide/vue";
 import { ref, onMounted, onUnmounted } from "vue";
 
@@ -29,6 +30,7 @@ interface Server {
 const props = defineProps<{
   servers: Server[];
   pendingUpdates?: Record<string, number>;
+  tokenWarnings?: Record<string, number>;
 }>();
 
 const emit = defineEmits<{
@@ -117,6 +119,11 @@ function formatDateTime(iso?: string): string {
         <div>
           <div class="flex items-center gap-2">
             <p class="font-medium text-white">{{ s.Name }}</p>
+            <AlertTriangle
+              v-if="tokenWarnings && tokenWarnings[s.Name] !== undefined"
+              class="w-3.5 h-3.5 text-amber-400"
+              title="Link expires soon"
+            />
             <span
               v-if="pendingUpdates && pendingUpdates[s.Name]"
               class="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold"

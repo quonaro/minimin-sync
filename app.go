@@ -13,6 +13,7 @@ import (
 
 	"minimin-sync/pkg/config"
 	"minimin-sync/pkg/discovery"
+	"minimin-sync/pkg/disk"
 	"minimin-sync/pkg/instance"
 	"minimin-sync/pkg/sync"
 
@@ -21,9 +22,10 @@ import (
 
 // App struct
 type App struct {
-	ctx       context.Context
-	config    *config.Config
-	opRunning atomic.Bool
+	ctx            context.Context
+	config         *config.Config
+	opRunning      atomic.Bool
+	autoCheckReset chan struct{}
 }
 
 // NewApp creates a new App application struct
@@ -46,26 +48,28 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.config.Save()
 	}
 
+	a.autoCheckReset = make(chan struct{})
 	go a.autoCheckLoop()
 }
 
 func (a *App) autoCheckLoop() {
-	interval := a.config.AutoCheckIntervalMinutes
-	if interval <= 0 {
-		interval = 5
-	}
-	ticker := time.NewTicker(time.Duration(interval) * time.Minute)
-	defer ticker.Stop()
-
-	a.runAutoCheck()
-
 	for {
+		interval := a.config.AutoCheckIntervalMinutes
+		if interval <= 0 {
+			interval = 5
+		}
+		timer := time.NewTimer(time.Duration(interval) * time.Minute)
+
+		a.runAutoCheck()
+
 		select {
-		case <-ticker.C:
-			a.runAutoCheck()
+		case <-timer.C:
+		case <-a.autoCheckReset:
 		case <-a.ctx.Done():
+			timer.Stop()
 			return
 		}
+		timer.Stop()
 	}
 }
 
@@ -131,8 +135,18 @@ func (a *App) GetConfig() config.Config {
 
 // SaveConfig persists the current configuration.
 func (a *App) SaveConfig(cfg config.Config) error {
+	oldInterval := a.config.AutoCheckIntervalMinutes
 	a.config = &cfg
-	return a.config.Save()
+	if err := a.config.Save(); err != nil {
+		return err
+	}
+	if oldInterval != cfg.AutoCheckIntervalMinutes && a.autoCheckReset != nil {
+		select {
+		case a.autoCheckReset <- struct{}{}:
+		default:
+		}
+	}
+	return nil
 }
 
 // DiscoverAllLaunchers returns every valid launcher instances directory found.
@@ -182,6 +196,18 @@ func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
 	return *info, nil
 }
 
+// uniqueInstanceName returns a directory name that does not already exist.
+func (a *App) uniqueInstanceName(base string) string {
+	name := base
+	for i := 1; ; i++ {
+		candidate := filepath.Join(a.config.InstancesDir, name)
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return name
+		}
+		name = fmt.Sprintf("%s-%d", base, i)
+	}
+}
+
 // AddServer installs a new server from a prism archive URL asynchronously.
 func (a *App) AddServer(url string) error {
 	if !a.opRunning.CompareAndSwap(false, true) {
@@ -213,8 +239,18 @@ func (a *App) AddServer(url string) error {
 			wailsruntime.EventsEmit(a.ctx, "addServer:error", "server name is empty")
 			return
 		}
+		name = a.uniqueInstanceName(name)
 
 		wailsruntime.EventsEmit(a.ctx, "addServer:status", "downloading archive")
+		size, err := client.ArchiveSize("prism")
+		if err == nil && size > 0 {
+			free, derr := disk.FreeBytes(a.config.InstancesDir)
+			if derr == nil && uint64(size) > free {
+				wailsruntime.EventsEmit(a.ctx, "addServer:error", fmt.Sprintf("not enough disk space (need %d MB, have %d MB)", size/1024/1024, int64(free)/1024/1024))
+				return
+			}
+		}
+
 		tmpPath, err := client.DownloadArchive("prism", func(d, t int64) {
 			wailsruntime.EventsEmit(a.ctx, "addServer:progress", d, t)
 		})
@@ -229,6 +265,12 @@ func (a *App) AddServer(url string) error {
 			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
+		cleanOnFail := true
+		defer func() {
+			if cleanOnFail {
+				_ = os.RemoveAll(instanceDir)
+			}
+		}()
 
 		wailsruntime.EventsEmit(a.ctx, "addServer:status", "extracting")
 		if err := sync.ExtractAll(tmpPath, instanceDir); err != nil {
@@ -249,6 +291,7 @@ func (a *App) AddServer(url string) error {
 			return
 		}
 
+		cleanOnFail = false
 		wailsruntime.EventsEmit(a.ctx, "addServer:done", info.ServerName)
 	}()
 
@@ -317,7 +360,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 
 	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_orphan")
 	var orphan []string
-	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks"} {
+	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks", "config", "scripts", "kubejs", "defaultconfigs"} {
 		subDir := filepath.Join(localDir, sub)
 		entries, err := os.ReadDir(subDir)
 		if err != nil {
@@ -345,7 +388,27 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
 	_ = instance.WriteMarker(instanceDir, marker)
 
+	a.emitTokenExpiry(instanceDir, marker.ServerID, info)
+
 	return result, nil
+}
+
+// emitTokenExpiry warns when the archive token is about to expire (≤ 24 h).
+func (a *App) emitTokenExpiry(instanceDir, serverID string, info *sync.InfoResponse) {
+	if info == nil || info.ExpiresAt == "" {
+		return
+	}
+	expires, err := time.Parse(time.RFC3339, info.ExpiresAt)
+	if err != nil {
+		return
+	}
+	hoursLeft := int(expires.Sub(time.Now().UTC()).Hours())
+	if hoursLeft <= 24 {
+		wailsruntime.EventsEmit(a.ctx, "token:expiring", map[string]interface{}{
+			"serverID":  serverID,
+			"hoursLeft": hoursLeft,
+		})
+	}
 }
 
 // CheckUpdates compares local files with the remote manifest.
@@ -417,6 +480,15 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 		var totalBytes int64
 		for _, mf := range toDownload {
 			totalBytes += mf.Size
+		}
+
+		if totalBytes > 0 {
+			free, derr := disk.FreeBytes(instanceDir)
+			if derr == nil && uint64(totalBytes) > free {
+				_ = sync.RestoreBackup(backupDir, instanceDir)
+				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("not enough disk space (need %d MB, have %d MB)", totalBytes/1024/1024, int64(free)/1024/1024))
+				return
+			}
 		}
 
 		const workers = 4

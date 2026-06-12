@@ -14,7 +14,7 @@ import {
   OpenInstanceDir,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
-import { Settings, Loader2, ArrowLeft, AlertTriangle } from "@lucide/vue";
+import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
 import { EventsOn } from "../wailsjs/runtime";
 import ServerList from "./components/ServerList.vue";
 import AddServer from "./components/AddServer.vue";
@@ -39,23 +39,20 @@ const editUrl = ref("");
 const editError = ref("");
 const editLoading = ref(false);
 const autoCheckInterval = ref(5);
-const tokenWarnings = ref<Record<string, number>>({});
 
-EventsOn("updates:available", (updates: any[]) => {
-  const map: Record<string, number> = {};
-  for (const u of updates) {
-    map[u.serverID] = (u.missingCount || 0) + (u.outdatedCount || 0);
-  }
-  pendingUpdates.value = map;
-});
+if ((window as any).runtime) {
+  EventsOn("updates:available", (updates: any[]) => {
+    const map: Record<string, number> = {};
+    for (const u of updates) {
+      map[u.serverID] = (u.missingCount || 0) + (u.outdatedCount || 0);
+    }
+    pendingUpdates.value = map;
+  });
 
-EventsOn("servers:reload", () => {
-  loadServers();
-});
-
-EventsOn("token:expiring", (data: any) => {
-  tokenWarnings.value[data.serverID] = data.hoursLeft;
-});
+  EventsOn("servers:reload", () => {
+    loadServers();
+  });
+}
 
 onErrorCaptured((err) => {
   appError.value = String(err);
@@ -284,25 +281,6 @@ const pageTitle = computed(() => {
       </button>
     </div>
 
-    <div
-      v-if="Object.keys(tokenWarnings).length > 0 && currentView === 'list'"
-      class="px-6 py-2 bg-amber-900/20 border-b border-amber-800/50 text-amber-300 text-sm flex items-center gap-2"
-    >
-      <AlertTriangle class="w-4 h-4 flex-shrink-0" />
-      <span>
-        Archive link expires soon for:
-        <span
-          v-for="(hours, id) in tokenWarnings"
-          :key="id"
-          class="font-medium text-amber-200"
-        >
-          {{ id }} ({{
-            hours > 24 ? Math.floor(hours / 24) + "d" : hours + "h"
-          }})
-        </span>
-      </span>
-    </div>
-
     <header
       class="px-6 py-4 border-b border-neutral-700 flex items-center relative"
     >
@@ -458,7 +436,6 @@ const pageTitle = computed(() => {
         <ServerList
           :servers="servers"
           :pending-updates="pendingUpdates"
-          :token-warnings="tokenWarnings"
           @run="handleRun"
           @check="goCheck"
           @add="goAdd"

@@ -388,27 +388,7 @@ func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, err
 	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
 	_ = instance.WriteMarker(instanceDir, marker)
 
-	a.emitTokenExpiry(instanceDir, marker.ServerID, info)
-
 	return result, nil
-}
-
-// emitTokenExpiry warns when the archive token is about to expire (≤ 24 h).
-func (a *App) emitTokenExpiry(instanceDir, serverID string, info *sync.InfoResponse) {
-	if info == nil || info.ExpiresAt == "" {
-		return
-	}
-	expires, err := time.Parse(time.RFC3339, info.ExpiresAt)
-	if err != nil {
-		return
-	}
-	hoursLeft := int(expires.Sub(time.Now().UTC()).Hours())
-	if hoursLeft <= 24 {
-		wailsruntime.EventsEmit(a.ctx, "token:expiring", map[string]interface{}{
-			"serverID":  serverID,
-			"hoursLeft": hoursLeft,
-		})
-	}
 }
 
 // CheckUpdates compares local files with the remote manifest.

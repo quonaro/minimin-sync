@@ -99,31 +99,33 @@ onUnmounted(() => {
   clearInterval(pollTimer);
 });
 
-EventsOn("checkUpdates:status", (status: string) => {
-  if (status in stepMap) {
-    currentStep.value = stepMap[status];
-  }
-});
+if ((window as any).runtime) {
+  EventsOn("checkUpdates:status", (status: string) => {
+    if (status in stepMap) {
+      currentStep.value = stepMap[status];
+    }
+  });
 
-EventsOn("applyUpdates:status", (msg: string) => {
-  applyStatus.value = msg;
-});
+  EventsOn("applyUpdates:status", (msg: string) => {
+    applyStatus.value = msg;
+  });
 
-EventsOn("applyUpdates:progress", (d: number, t: number) => {
-  applyProgress.value = d;
-  applyTotal.value = t;
-});
+  EventsOn("applyUpdates:progress", (d: number, t: number) => {
+    applyProgress.value = d;
+    applyTotal.value = t;
+  });
 
-EventsOn("applyUpdates:done", () => {
-  applying.value = false;
-  applyStatus.value = "Done!";
-  emit("back");
-});
+  EventsOn("applyUpdates:done", () => {
+    applying.value = false;
+    applyStatus.value = "Done!";
+    emit("back");
+  });
 
-EventsOn("applyUpdates:error", (msg: string) => {
-  applying.value = false;
-  error.value = msg;
-});
+  EventsOn("applyUpdates:error", (msg: string) => {
+    applying.value = false;
+    error.value = msg;
+  });
+}
 
 function toggle(path: string) {
   if (selected.value.has(path)) {

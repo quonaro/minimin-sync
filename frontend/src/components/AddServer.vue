@@ -20,24 +20,26 @@ const total = ref(0);
 const error = ref("");
 const done = ref(false);
 
-EventsOn("addServer:status", (msg: string) => {
-  status.value = msg;
-});
+if ((window as any).runtime) {
+  EventsOn("addServer:status", (msg: string) => {
+    status.value = msg;
+  });
 
-EventsOn("addServer:progress", (d: number, t: number) => {
-  progress.value = d;
-  total.value = t;
-});
+  EventsOn("addServer:progress", (d: number, t: number) => {
+    progress.value = d;
+    total.value = t;
+  });
 
-EventsOn("addServer:error", (msg: string) => {
-  error.value = msg;
-  status.value = "";
-});
+  EventsOn("addServer:error", (msg: string) => {
+    error.value = msg;
+    status.value = "";
+  });
 
-EventsOn("addServer:done", (name: string) => {
-  done.value = true;
-  status.value = `Installed: ${name}`;
-});
+  EventsOn("addServer:done", (name: string) => {
+    done.value = true;
+    status.value = `Installed: ${name}`;
+  });
+}
 
 async function preview() {
   if (!url.value) return;

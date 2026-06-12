@@ -16,12 +16,15 @@ jobs:
         - os: ubuntu-latest
           platform: linux/amd64
           artifact: minimin-sync
+          artifact_name: linux-amd64
         - os: windows-latest
           platform: windows/amd64
           artifact: minimin-sync.exe
+          artifact_name: windows-amd64
         - os: macos-latest
           platform: darwin/universal
           artifact: minimin-sync.app
+          artifact_name: darwin-universal
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,5 +60,5 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: minimin-sync-${{ matrix.platform }}
+        name: minimin-sync-${{ matrix.artifact_name }}
         path: build/bin/${{ matrix.artifact }}

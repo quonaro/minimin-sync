@@ -1,0 +1,6 @@
+dev:
+  script: |
+    export PATH="$PATH:$HOME/go/bin" && cd /srv/projects/my/minecraft/minimin-sync && wails dev -tags webkit2_41 2>&1
+
+build:
+  script: wails build -tags webkit2_41 -skipbindings

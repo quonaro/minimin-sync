@@ -6,18 +6,9 @@ import (
 	"path/filepath"
 )
 
-// Server holds a synced server entry.
-type Server struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Token   string `json:"token"`
-	BaseURL string `json:"baseUrl"`
-}
-
 // Config is the persistent app configuration.
 type Config struct {
-	InstancesDir string   `json:"instancesDir"`
-	Servers      []Server `json:"servers"`
+	InstancesDir string `json:"instancesDir"`
 }
 
 // ConfigDir returns the directory where config is stored.

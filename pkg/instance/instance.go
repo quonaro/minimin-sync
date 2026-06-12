@@ -11,10 +11,11 @@ const MarkerFile = ".minimin.json"
 
 // Marker holds metadata for a synced instance.
 type Marker struct {
-	ServerID   string `json:"serverId"`
-	Token      string `json:"token"`
-	BaseURL    string `json:"baseUrl"`
-	LastSyncAt string `json:"lastSyncAt"`
+	ServerID    string `json:"serverId"`
+	Token       string `json:"token"`
+	BaseURL     string `json:"baseUrl"`
+	LastSyncAt  string `json:"lastSyncAt"`
+	LastCheckAt string `json:"lastCheckAt"`
 }
 
 // ReadMarker reads .minimin.json from an instance directory.
@@ -52,7 +53,7 @@ type ScannedInstance struct {
 func Scan(instancesDir string) ([]ScannedInstance, error) {
 	entries, err := os.ReadDir(instancesDir)
 	if err != nil {
-		return nil, err
+		return []ScannedInstance{}, err
 	}
 	var results []ScannedInstance
 	for _, e := range entries {

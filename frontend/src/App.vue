@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, onErrorCaptured } from "vue";
 import {
   GetConfig,
   DiscoverAllLaunchers,
   SaveConfig,
   GetServers,
   SelectInstancesDir,
+  RemoveServer,
+  CheckUpdates as CheckUpdatesGo,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
-import { Settings, Loader2 } from "@lucide/vue";
+import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
+import { EventsOn } from "../wailsjs/runtime";
 import ServerList from "./components/ServerList.vue";
 import AddServer from "./components/AddServer.vue";
 import CheckUpdates from "./components/CheckUpdates.vue";
@@ -21,6 +24,28 @@ const servers = ref<any[]>([]);
 const selectedServer = ref("");
 const detectedLaunchers = ref<string[]>([]);
 const scanning = ref(false);
+const appError = ref<string>("");
+const deleteConfirm = ref(false);
+const deleteTarget = ref("");
+const pendingUpdates = ref<Record<string, number>>({});
+
+EventsOn("updates:available", (updates: any[]) => {
+  const map: Record<string, number> = {};
+  for (const u of updates) {
+    map[u.serverID] = (u.missingCount || 0) + (u.outdatedCount || 0);
+  }
+  pendingUpdates.value = map;
+});
+
+EventsOn("servers:reload", () => {
+  loadServers();
+});
+
+onErrorCaptured((err) => {
+  appError.value = String(err);
+  console.error(err);
+  return false;
+});
 
 onMounted(async () => {
   const cfg = await GetConfig();
@@ -28,12 +53,16 @@ onMounted(async () => {
     instancesDir.value = cfg.instancesDir;
     currentView.value = "list";
     await loadServers();
+    for (const s of servers.value) {
+      CheckUpdatesGo(s.Name).catch(() => {});
+    }
   }
 });
 
 async function loadServers() {
   try {
-    servers.value = await GetServers();
+    const result = await GetServers();
+    servers.value = result ?? [];
   } catch {
     servers.value = [];
   }
@@ -51,7 +80,6 @@ async function selectLauncher(dir: string) {
   await SaveConfig(
     new config.Config({
       instancesDir: dir,
-      servers: existing.servers,
     }),
   );
   currentView.value = "list";
@@ -71,7 +99,6 @@ async function saveDir() {
   await SaveConfig(
     new config.Config({
       instancesDir: instancesDir.value,
-      servers: existing.servers,
     }),
   );
   currentView.value = "list";
@@ -82,6 +109,29 @@ function goAdd() {
   currentView.value = "add";
 }
 
+function openDeleteConfirm(serverId: string) {
+  deleteTarget.value = serverId;
+  deleteConfirm.value = true;
+}
+
+async function confirmDelete() {
+  deleteConfirm.value = false;
+  if (deleteTarget.value) {
+    try {
+      await RemoveServer(deleteTarget.value);
+      await loadServers();
+    } catch (e: any) {
+      appError.value = e?.toString?.() || "Failed to delete server";
+    }
+  }
+  deleteTarget.value = "";
+}
+
+function cancelDelete() {
+  deleteConfirm.value = false;
+  deleteTarget.value = "";
+}
+
 function goList() {
   currentView.value = "list";
   loadServers();
@@ -90,6 +140,7 @@ function goList() {
 function goCheck(serverId: string) {
   selectedServer.value = serverId;
   currentView.value = "check";
+  delete pendingUpdates.value[serverId];
 }
 
 async function goSetup() {
@@ -132,6 +183,22 @@ const pageTitle = computed(() => {
 
 <template>
   <div class="h-screen w-screen bg-neutral-900 text-neutral-100 flex flex-col">
+    <div
+      v-if="appError"
+      class="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-8"
+    >
+      <p class="text-red-400 font-bold mb-2">Runtime Error</p>
+      <pre class="text-red-300 text-xs whitespace-pre-wrap max-w-full">{{
+        appError
+      }}</pre>
+      <button
+        class="mt-4 px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm"
+        @click="appError = ''"
+      >
+        Dismiss
+      </button>
+    </div>
+
     <header
       class="px-6 py-4 border-b border-neutral-700 flex items-center relative"
     >
@@ -146,23 +213,17 @@ const pageTitle = computed(() => {
         }}</span>
       </div>
 
-      <div class="flex gap-3 w-1/3 justify-end">
+      <div class="flex items-center gap-3 w-1/3 justify-end">
         <button
-          v-if="currentView !== 'list'"
-          class="px-3 py-1.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm transition-colors"
+          v-if="currentView === 'setup'"
+          class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
           @click="goList"
         >
-          Servers
+          <ArrowLeft class="w-4 h-4" />
+          Back
         </button>
         <button
-          v-if="currentView !== 'add'"
-          class="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
-          @click="goAdd"
-        >
-          Add Server
-        </button>
-        <button
-          v-if="currentView !== 'setup'"
+          v-else
           class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 transition-colors"
           @click="goSetup"
         >
@@ -266,18 +327,50 @@ const pageTitle = computed(() => {
         </button>
       </div>
 
-      <ServerList
-        v-else-if="currentView === 'list'"
-        :servers="servers"
-        @check="goCheck"
-        @add="goAdd"
-      />
+      <div v-else-if="currentView === 'list'" class="flex-1 flex flex-col">
+        <ServerList
+          :servers="servers"
+          :pending-updates="pendingUpdates"
+          @check="goCheck"
+          @add="goAdd"
+          @delete="openDeleteConfirm"
+        />
+      </div>
       <AddServer v-else-if="currentView === 'add'" @done="goList" />
       <CheckUpdates
         v-else-if="currentView === 'check'"
         :server-id="selectedServer"
         @back="goList"
       />
+      <div
+        v-if="deleteConfirm"
+        class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
+      >
+        <div
+          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700"
+        >
+          <h3 class="text-lg font-bold mb-2">Delete Server</h3>
+          <p class="text-neutral-400 text-sm mb-6">
+            Are you sure you want to delete
+            <span class="text-white font-medium">{{ deleteTarget }}</span
+            >? This cannot be undone.
+          </p>
+          <div class="flex gap-3">
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              @click="cancelDelete"
+            >
+              Cancel
+            </button>
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors"
+              @click="confirmDelete"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </template>

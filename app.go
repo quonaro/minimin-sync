@@ -38,6 +38,71 @@ func (a *App) startup(ctx context.Context) {
 		cfg = &config.Config{}
 	}
 	a.config = cfg
+
+	go a.autoCheckLoop()
+}
+
+func (a *App) autoCheckLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	a.runAutoCheck()
+
+	for {
+		select {
+		case <-ticker.C:
+			a.runAutoCheck()
+		case <-a.ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *App) runAutoCheck() {
+	if a.config.InstancesDir == "" {
+		return
+	}
+	servers, err := instance.Scan(a.config.InstancesDir)
+	if err != nil {
+		return
+	}
+
+	type updateInfo struct {
+		ServerID      string `json:"serverID"`
+		Name          string `json:"name"`
+		MissingCount  int    `json:"missingCount"`
+		OutdatedCount int    `json:"outdatedCount"`
+	}
+
+	var updates []updateInfo
+	for _, s := range servers {
+		if s.Marker == nil {
+			continue
+		}
+		res, err := a.checkUpdatesInternal(s.Name)
+		if err != nil {
+			continue
+		}
+		missingCnt, outdatedCnt := 0, 0
+		if v, ok := res["missing"].([]sync.ManifestFile); ok {
+			missingCnt = len(v)
+		}
+		if v, ok := res["outdated"].([]sync.ManifestFile); ok {
+			outdatedCnt = len(v)
+		}
+		if missingCnt > 0 || outdatedCnt > 0 {
+			updates = append(updates, updateInfo{
+				ServerID:      s.Name,
+				Name:          s.Name,
+				MissingCount:  missingCnt,
+				OutdatedCount: outdatedCnt,
+			})
+		}
+	}
+	if len(updates) > 0 {
+		runtime.EventsEmit(a.ctx, "updates:available", updates)
+	}
+	runtime.EventsEmit(a.ctx, "servers:reload")
 }
 
 // GetConfig returns the current configuration.
@@ -75,8 +140,37 @@ func (a *App) GetServers() ([]instance.ScannedInstance, error) {
 	return instance.Scan(dir)
 }
 
+// RemoveServer deletes a synced server instance directory.
+func (a *App) RemoveServer(serverID string) error {
+	if a.config.InstancesDir == "" {
+		return fmt.Errorf("instances directory not configured")
+	}
+	instanceDir := filepath.Join(a.config.InstancesDir, serverID)
+	return os.RemoveAll(instanceDir)
+}
+
+// PreviewServer fetches archive info for a URL without installing.
+func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
+	if !strings.Contains(url, "?format=") {
+		url = url + "?format=prism"
+	}
+	token, baseURL, err := parseArchiveURL(url)
+	if err != nil {
+		return sync.InfoResponse{}, err
+	}
+	client := sync.NewClient(baseURL, token)
+	info, err := client.FetchInfo()
+	if err != nil {
+		return sync.InfoResponse{}, err
+	}
+	return *info, nil
+}
+
 // AddServer installs a new server from a prism archive URL asynchronously.
 func (a *App) AddServer(url string) error {
+	if !strings.Contains(url, "?format=") {
+		url = url + "?format=prism"
+	}
 	token, baseURL, err := parseArchiveURL(url)
 	if err != nil {
 		return err
@@ -92,6 +186,12 @@ func (a *App) AddServer(url string) error {
 			return
 		}
 
+		name := sanitizeName(info.ServerName)
+		if name == "" {
+			runtime.EventsEmit(a.ctx, "addServer:error", "server name is empty")
+			return
+		}
+
 		runtime.EventsEmit(a.ctx, "addServer:status", "downloading archive")
 		tmpPath, err := client.DownloadArchive("prism", func(d, t int64) {
 			runtime.EventsEmit(a.ctx, "addServer:progress", d, t)
@@ -102,7 +202,7 @@ func (a *App) AddServer(url string) error {
 		}
 		defer func() { _ = os.Remove(tmpPath) }()
 
-		instanceDir := filepath.Join(a.config.InstancesDir, info.ServerName)
+		instanceDir := filepath.Join(a.config.InstancesDir, name)
 		if err := os.MkdirAll(instanceDir, 0o755); err != nil {
 			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
@@ -115,23 +215,16 @@ func (a *App) AddServer(url string) error {
 		}
 
 		marker := &instance.Marker{
-			ServerID:   info.ServerName,
+			ServerID:   name,
 			Token:      token,
 			BaseURL:    baseURL,
-			LastSyncAt: info.CreatedAt,
+			LastSyncAt: time.Now().UTC().Format(time.RFC3339),
 		}
+		runtime.LogInfof(a.ctx, "writing marker to %s", filepath.Join(instanceDir, instance.MarkerFile))
 		if err := instance.WriteMarker(instanceDir, marker); err != nil {
 			runtime.EventsEmit(a.ctx, "addServer:error", err.Error())
 			return
 		}
-
-		a.config.Servers = append(a.config.Servers, config.Server{
-			ID:      info.ServerName,
-			Name:    info.ServerName,
-			Token:   token,
-			BaseURL: baseURL,
-		})
-		_ = a.config.Save()
 
 		runtime.EventsEmit(a.ctx, "addServer:done", info.ServerName)
 	}()
@@ -139,24 +232,29 @@ func (a *App) AddServer(url string) error {
 	return nil
 }
 
-// CheckUpdates compares local files with the remote manifest.
-func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
+func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, error) {
 	dir := a.config.InstancesDir
 	if dir == "" {
 		return nil, fmt.Errorf("instances directory not configured")
 	}
 
 	instanceDir := filepath.Join(dir, serverID)
+	runtime.LogInfof(a.ctx, "checking updates for %s in %s", serverID, instanceDir)
+
 	marker, err := instance.ReadMarker(instanceDir)
 	if err != nil {
+		runtime.LogErrorf(a.ctx, "read marker failed: %v", err)
 		return nil, err
 	}
+	runtime.LogInfof(a.ctx, "marker read: baseURL=%s token=%s...", marker.BaseURL, marker.Token[:8])
 
 	client := sync.NewClient(marker.BaseURL, marker.Token)
 	manifest, err := client.FetchManifest()
 	if err != nil {
+		runtime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
 		return nil, err
 	}
+	runtime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
 
 	localDir := filepath.Join(instanceDir, ".minecraft")
 	var missing []sync.ManifestFile
@@ -164,7 +262,7 @@ func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
 	localFiles := make(map[string]bool)
 
 	for _, mf := range manifest.Files {
-		localPath := filepath.Join(localDir, filepath.FromSlash(mf.Path))
+		localPath := filepath.Join(instanceDir, filepath.FromSlash(mf.Path))
 		info, err := os.Stat(localPath)
 		if err != nil {
 			missing = append(missing, mf)
@@ -199,11 +297,22 @@ func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
 		}
 	}
 
-	return map[string]interface{}{
+	result := map[string]interface{}{
 		"missing":  missing,
 		"outdated": outdated,
 		"orphan":   orphan,
-	}, nil
+	}
+	runtime.LogInfof(a.ctx, "check complete: missing=%d outdated=%d orphan=%d", len(missing), len(outdated), len(orphan))
+
+	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
+	_ = instance.WriteMarker(instanceDir, marker)
+
+	return result, nil
+}
+
+// CheckUpdates compares local files with the remote manifest.
+func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
+	return a.checkUpdatesInternal(serverID)
 }
 
 // ApplyUpdates downloads the zip archive and applies selected files asynchronously.
@@ -297,19 +406,36 @@ func (a *App) ApplyUpdates(serverID string, selected []string) error {
 	return nil
 }
 
-func parseArchiveURL(url string) (token, baseURL string, err error) {
-	parts := strings.Split(url, "/api/client-archive/")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid archive URL")
+func sanitizeName(name string) string {
+	replacer := strings.NewReplacer(
+		"/", "-",
+		"\\", "-",
+		":", "-",
+		"*", "-",
+		"?", "-",
+		"\"", "-",
+		"<", "-",
+		">", "-",
+		"|", "-",
+		" ", "_",
+	)
+	return strings.TrimSpace(replacer.Replace(name))
+}
+
+func parseArchiveURL(rawURL string) (token, baseURL string, err error) {
+	for _, sep := range []string{"/api/client-archive/", "/client-archive/"} {
+		parts := strings.Split(rawURL, sep)
+		if len(parts) == 2 {
+			baseURL = strings.TrimSuffix(parts[0], "/")
+			tokenPart := parts[1]
+			if idx := strings.Index(tokenPart, "?"); idx != -1 {
+				tokenPart = tokenPart[:idx]
+			}
+			token = strings.Trim(tokenPart, "/")
+			if token != "" {
+				return token, baseURL, nil
+			}
+		}
 	}
-	baseURL = strings.TrimSuffix(parts[0], "/")
-	tokenPart := parts[1]
-	if idx := strings.Index(tokenPart, "?"); idx != -1 {
-		tokenPart = tokenPart[:idx]
-	}
-	token = strings.Trim(tokenPart, "/")
-	if token == "" {
-		return "", "", fmt.Errorf("token not found in URL")
-	}
-	return token, baseURL, nil
+	return "", "", fmt.Errorf("invalid archive URL")
 }

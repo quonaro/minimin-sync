@@ -7,13 +7,15 @@ import {
   Download,
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
+  ChevronUp,
 } from "@lucide/vue";
 import { EventsOn } from "../../wailsjs/runtime";
 
 interface ManifestFile {
-  Path: string;
-  SHA256: string;
-  Size: number;
+  path: string;
+  sha256: string;
+  size: number;
 }
 
 const props = defineProps<{
@@ -31,6 +33,12 @@ const outdated = ref<ManifestFile[]>([]);
 const orphan = ref<string[]>([]);
 const selected = ref<Set<string>>(new Set());
 
+const collapsed = ref({ missing: false, outdated: false, orphan: true });
+
+function toggleSection(section: "missing" | "outdated" | "orphan") {
+  collapsed.value[section] = !collapsed.value[section];
+}
+
 const applying = ref(false);
 const applyProgress = ref(0);
 const applyTotal = ref(0);
@@ -43,10 +51,10 @@ onMounted(async () => {
     outdated.value = result.outdated || [];
     orphan.value = result.orphan || [];
 
-    for (const f of missing.value) selected.value.add(f.Path);
-    for (const f of outdated.value) selected.value.add(f.Path);
+    for (const f of missing.value) selected.value.add(f.path);
+    for (const f of outdated.value) selected.value.add(f.path);
   } catch (e: any) {
-    error.value = e?.message || "Failed to check updates";
+    error.value = e?.toString?.() || "Failed to check updates";
   } finally {
     loading.value = false;
   }
@@ -81,8 +89,8 @@ function toggle(path: string) {
 }
 
 function selectAll() {
-  for (const f of missing.value) selected.value.add(f.Path);
-  for (const f of outdated.value) selected.value.add(f.Path);
+  for (const f of missing.value) selected.value.add(f.path);
+  for (const f of outdated.value) selected.value.add(f.path);
   for (const f of orphan.value) selected.value.add(f);
 }
 
@@ -163,67 +171,82 @@ function formatSize(bytes: number): string {
 
       <div v-else class="space-y-4 max-w-3xl">
         <div v-if="missing.length > 0">
-          <h3
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5"
+          <button
+            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+            @click="toggleSection('missing')"
           >
             <Download class="w-4 h-4 text-emerald-400" />
             Missing ({{ missing.length }})
-          </h3>
-          <div class="space-y-1">
+            <component
+              :is="collapsed.missing ? ChevronDown : ChevronUp"
+              class="w-4 h-4 ml-auto text-neutral-500"
+            />
+          </button>
+          <div v-if="!collapsed.missing" class="space-y-1">
             <label
               v-for="f in missing"
-              :key="f.Path"
+              :key="f.path"
               class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
             >
               <input
                 type="checkbox"
-                :checked="selected.has(f.Path)"
+                :checked="selected.has(f.path)"
                 class="rounded border-neutral-600 bg-neutral-700 text-primary"
-                @change="toggle(f.Path)"
+                @change="toggle(f.path)"
               />
-              <span class="flex-1 text-sm truncate">{{ f.Path }}</span>
+              <span class="flex-1 text-sm truncate">{{ f.path }}</span>
               <span class="text-xs text-neutral-500">{{
-                formatSize(f.Size)
+                formatSize(f.size)
               }}</span>
             </label>
           </div>
         </div>
 
         <div v-if="outdated.length > 0">
-          <h3
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5"
+          <button
+            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+            @click="toggleSection('outdated')"
           >
             <AlertTriangle class="w-4 h-4 text-amber-400" />
             Outdated ({{ outdated.length }})
-          </h3>
-          <div class="space-y-1">
+            <component
+              :is="collapsed.outdated ? ChevronDown : ChevronUp"
+              class="w-4 h-4 ml-auto text-neutral-500"
+            />
+          </button>
+          <div v-if="!collapsed.outdated" class="space-y-1">
             <label
               v-for="f in outdated"
-              :key="f.Path"
+              :key="f.path"
               class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
             >
               <input
                 type="checkbox"
-                :checked="selected.has(f.Path)"
+                :checked="selected.has(f.path)"
                 class="rounded border-neutral-600 bg-neutral-700 text-primary"
-                @change="toggle(f.Path)"
+                @change="toggle(f.path)"
               />
-              <span class="flex-1 text-sm truncate">{{ f.Path }}</span>
+              <span class="flex-1 text-sm truncate">{{ f.path }}</span>
               <span class="text-xs text-neutral-500">{{
-                formatSize(f.Size)
+                formatSize(f.size)
               }}</span>
             </label>
           </div>
         </div>
 
         <div v-if="orphan.length > 0">
-          <h3
-            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5"
+          <button
+            class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
+            @click="toggleSection('orphan')"
           >
             <AlertTriangle class="w-4 h-4 text-red-400" />
             Orphan ({{ orphan.length }})
-          </h3>
-          <div class="space-y-1">
+            <component
+              :is="collapsed.orphan ? ChevronDown : ChevronUp"
+              class="w-4 h-4 ml-auto text-neutral-500"
+            />
+          </button>
+          <div v-if="!collapsed.orphan" class="space-y-1">
             <label
               v-for="f in orphan"
               :key="f"

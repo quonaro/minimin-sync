@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+            artifact: minimin-sync
+          - os: windows-latest
+            platform: windows/amd64
+            artifact: minimin-sync.exe
+          - os: macos-latest
+            platform: darwin/universal
+            artifact: minimin-sync.app
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build
+        run: wails build -platform ${{ matrix.platform }} -ldflags "-X main.version=${{ github.sha }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimin-sync-${{ matrix.platform }}
+          path: build/bin/${{ matrix.artifact }}

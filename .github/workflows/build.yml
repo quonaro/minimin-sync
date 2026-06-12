@@ -18,19 +18,17 @@ jobs:
       with:
         path: artifacts
 
-    - name: Rename artifacts
+    - name: Prepare release files
       run: |
-        mv artifacts/minimin-sync-linux-amd64/minimin-sync artifacts/minimin-sync-linux-amd64
-        mv artifacts/minimin-sync-windows-amd64/minimin-sync.exe artifacts/minimin-sync-windows-amd64.exe
-        mv artifacts/minimin-sync-darwin-universal/minimin-sync-darwin-universal.zip artifacts/minimin-sync-darwin-universal.zip
+        mkdir release
+        cp artifacts/minimin-sync-linux-amd64/minimin-sync release/minimin-sync-linux-amd64
+        cp artifacts/minimin-sync-windows-amd64/minimin-sync.exe release/minimin-sync-windows-amd64.exe
+        cp artifacts/minimin-sync-darwin-universal/minimin-sync-darwin-universal.zip release/minimin-sync-darwin-universal.zip
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          artifacts/minimin-sync-linux-amd64
-          artifacts/minimin-sync-windows-amd64.exe
-          artifacts/minimin-sync-darwin-universal.zip
+        files: release/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

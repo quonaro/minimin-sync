@@ -80,7 +80,14 @@ jobs:
       run: npm install
 
     - name: Build
-      run: wails build -tags webkit2_41 -platform ${{ matrix.platform }} -ldflags "-X main.version=${{ github.sha }}"
+      shell: bash
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION="${{ github.ref_name }}"
+        else
+          VERSION="${{ github.sha }}"
+        fi
+        wails build -tags webkit2_41 -platform ${{ matrix.platform }} -ldflags "-X main.version=$VERSION"
 
     - name: Build AppImage
       if: matrix.os == 'ubuntu-22.04'

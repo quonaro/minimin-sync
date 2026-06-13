@@ -17,6 +17,7 @@ import {
   RestartApp,
   CancelUpdate,
   GetVersion,
+  HasPendingUpdate,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -88,6 +89,11 @@ onErrorCaptured((err) => {
 onMounted(async () => {
   try {
     appVersion.value = await GetVersion();
+  } catch {}
+  try {
+    if (await HasPendingUpdate()) {
+      restartModal.value = true;
+    }
   } catch {}
 
   const cfg = await GetConfig();
@@ -332,9 +338,6 @@ async function confirmRestart() {
 
 async function cancelRestart() {
   restartModal.value = false;
-  try {
-    await CancelUpdate();
-  } catch {}
 }
 
 const pageTitle = computed(() => {
@@ -605,14 +608,18 @@ const pageTitle = computed(() => {
               </div>
 
               <button
-                v-if="!updateInfo && !updateChecking && !updateDownloading"
+                v-if="
+                  !updateChecking &&
+                  !updateDownloading &&
+                  (!updateInfo || !updateInfo.available)
+                "
                 class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
                 @click="checkUpdate"
               >
                 Check for Update
               </button>
               <button
-                v-else-if="updateInfo?.available && !updateDownloading"
+                v-if="updateInfo?.available && !updateDownloading"
                 class="w-full py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
                 @click="doUpdate"
               >

@@ -859,10 +859,6 @@ func (a *App) DownloadUpdate() error {
 		return fmt.Errorf("already up to date")
 	}
 
-	if a.updateTmpPath != "" {
-		_ = os.Remove(a.updateTmpPath)
-	}
-
 	currentExe, err := os.Executable()
 	if err != nil {
 		return err
@@ -870,6 +866,15 @@ func (a *App) DownloadUpdate() error {
 	currentExe, err = filepath.EvalSymlinks(currentExe)
 	if err != nil {
 		return err
+	}
+
+	tmpFile := currentExe + ".tmp"
+
+	// If already downloaded, just emit done.
+	if _, err := os.Stat(tmpFile); err == nil {
+		a.updateTmpPath = tmpFile
+		wailsruntime.EventsEmit(a.ctx, "updateSelf:done")
+		return nil
 	}
 
 	downloadURL := info["url"].(string)
@@ -888,7 +893,6 @@ func (a *App) DownloadUpdate() error {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	tmpFile := currentExe + ".tmp"
 	out, err := os.Create(tmpFile)
 	if err != nil {
 		return err
@@ -972,6 +976,20 @@ func (a *App) CancelUpdate() error {
 		a.updateTmpPath = ""
 	}
 	return nil
+}
+
+// HasPendingUpdate reports whether a downloaded update file is waiting to be applied.
+func (a *App) HasPendingUpdate() bool {
+	currentExe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	currentExe, err = filepath.EvalSymlinks(currentExe)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(currentExe + ".tmp")
+	return err == nil
 }
 
 func sanitizeName(name string) string {

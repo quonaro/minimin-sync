@@ -13,7 +13,9 @@ import {
   RefreshServerInfo,
   OpenInstanceDir,
   CheckForUpdate,
-  UpdateSelf,
+  DownloadUpdate,
+  RestartApp,
+  CancelUpdate,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -44,6 +46,10 @@ const autoCheckInterval = ref(5);
 const updateInfo = ref<Record<string, any> | null>(null);
 const updateChecking = ref(false);
 const updateError = ref("");
+const updateDownloading = ref(false);
+const updateProgress = ref(0);
+const updateTotal = ref(0);
+const restartModal = ref(false);
 
 if ((window as any).runtime) {
   EventsOn("updates:available", (updates: any[]) => {
@@ -56,6 +62,16 @@ if ((window as any).runtime) {
 
   EventsOn("servers:reload", () => {
     loadServers();
+  });
+
+  EventsOn("updateSelf:progress", (d: number, t: number) => {
+    updateProgress.value = d;
+    updateTotal.value = t;
+  });
+
+  EventsOn("updateSelf:done", () => {
+    updateDownloading.value = false;
+    restartModal.value = true;
   });
 }
 
@@ -267,11 +283,30 @@ async function checkUpdate() {
 
 async function doUpdate() {
   updateError.value = "";
+  updateDownloading.value = true;
+  updateProgress.value = 0;
+  updateTotal.value = 0;
   try {
-    await UpdateSelf();
+    await DownloadUpdate();
   } catch (e: any) {
     updateError.value = e?.toString?.() || "Update failed";
+    updateDownloading.value = false;
   }
+}
+
+async function confirmRestart() {
+  try {
+    await RestartApp();
+  } catch (e: any) {
+    updateError.value = e?.toString?.() || "Restart failed";
+  }
+}
+
+async function cancelRestart() {
+  restartModal.value = false;
+  try {
+    await CancelUpdate();
+  } catch {}
 }
 
 const pageTitle = computed(() => {
@@ -460,7 +495,7 @@ const pageTitle = computed(() => {
           </div>
         </div>
 
-        <div class="mb-4">
+        <div class="mb-4 space-y-3">
           <div
             v-if="updateChecking"
             class="flex items-center gap-2 text-sm text-neutral-400 py-2"
@@ -489,15 +524,35 @@ const pageTitle = computed(() => {
               Up to date ({{ updateInfo.version }})
             </p>
           </div>
+
+          <div v-if="updateDownloading" class="space-y-2">
+            <div class="flex items-center gap-2 text-sm text-neutral-300">
+              <Loader2 class="w-4 h-4 animate-spin" />
+              <span>Downloading update...</span>
+            </div>
+            <div class="w-full bg-neutral-800 rounded-full h-2">
+              <div
+                class="bg-primary h-2 rounded-full transition-all"
+                :style="{
+                  width: `${updateTotal > 0 ? Math.min(100, (updateProgress / updateTotal) * 100) : 0}%`,
+                }"
+              ></div>
+            </div>
+            <p class="text-xs text-neutral-500 text-right">
+              {{ Math.round(updateProgress / 1024 / 1024) }} /
+              {{ Math.round(updateTotal / 1024 / 1024) }} MB
+            </p>
+          </div>
+
           <button
-            v-if="!updateInfo && !updateChecking"
+            v-if="!updateInfo && !updateChecking && !updateDownloading"
             class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
             @click="checkUpdate"
           >
             Check for Update
           </button>
           <button
-            v-else-if="updateInfo?.available"
+            v-else-if="updateInfo?.available && !updateDownloading"
             class="w-full py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
             @click="doUpdate"
           >
@@ -606,6 +661,35 @@ const pageTitle = computed(() => {
                 Saving...
               </span>
               <span v-else>Save</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="restartModal"
+        class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
+      >
+        <div
+          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700 text-center"
+        >
+          <h3 class="text-lg font-bold mb-2">Update Ready</h3>
+          <p class="text-neutral-400 text-sm mb-6">
+            A new version has been downloaded. Restart the app to apply the
+            update.
+          </p>
+          <div class="flex gap-3">
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              @click="cancelRestart"
+            >
+              Later
+            </button>
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
+              @click="confirmRestart"
+            >
+              Restart Now
             </button>
           </div>
         </div>

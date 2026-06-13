@@ -29,6 +29,7 @@ type App struct {
 	config         *config.Config
 	opRunning      atomic.Bool
 	autoCheckReset chan struct{}
+	updateTmpPath  string
 }
 
 // NewApp creates a new App application struct
@@ -827,14 +828,34 @@ func (a *App) CheckForUpdate() (map[string]interface{}, error) {
 	}, nil
 }
 
-// UpdateSelf downloads the latest release asset and replaces the running binary.
-func (a *App) UpdateSelf() error {
+type progressReader struct {
+	r          io.Reader
+	total      int64
+	current    int64
+	onProgress func(downloaded, total int64)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	pr.current += int64(n)
+	if pr.onProgress != nil {
+		pr.onProgress(pr.current, pr.total)
+	}
+	return n, err
+}
+
+// DownloadUpdate downloads the latest release asset to a temporary file.
+func (a *App) DownloadUpdate() error {
 	info, err := a.CheckForUpdate()
 	if err != nil {
 		return err
 	}
 	if !info["available"].(bool) && version != "dev" {
 		return fmt.Errorf("already up to date")
+	}
+
+	if a.updateTmpPath != "" {
+		_ = os.Remove(a.updateTmpPath)
 	}
 
 	currentExe, err := os.Executable()
@@ -867,12 +888,40 @@ func (a *App) UpdateSelf() error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(out, resp.Body)
+
+	pr := &progressReader{
+		r:          resp.Body,
+		total:      resp.ContentLength,
+		onProgress: func(d, t int64) { wailsruntime.EventsEmit(a.ctx, "updateSelf:progress", d, t) },
+	}
+	_, err = io.Copy(out, pr)
 	out.Close()
 	if err != nil {
 		_ = os.Remove(tmpFile)
 		return err
 	}
+
+	a.updateTmpPath = tmpFile
+	wailsruntime.EventsEmit(a.ctx, "updateSelf:done")
+	return nil
+}
+
+// RestartApp replaces the running binary with the downloaded update and restarts.
+func (a *App) RestartApp() error {
+	if a.updateTmpPath == "" {
+		return fmt.Errorf("no update downloaded")
+	}
+
+	currentExe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	currentExe, err = filepath.EvalSymlinks(currentExe)
+	if err != nil {
+		return err
+	}
+	tmpFile := a.updateTmpPath
+	a.updateTmpPath = ""
 
 	if runtime.GOOS == "windows" {
 		scriptPath := filepath.Join(os.TempDir(), "minimin-update.bat")
@@ -893,7 +942,7 @@ func (a *App) UpdateSelf() error {
 
 	if runtime.GOOS == "darwin" {
 		_ = os.Remove(tmpFile)
-		return fmt.Errorf("auto-update is not supported on macOS; please download the latest release manually")
+		return fmt.Errorf("auto-update is not supported on macOS")
 	}
 
 	if err := os.Rename(tmpFile, currentExe); err != nil {
@@ -908,6 +957,15 @@ func (a *App) UpdateSelf() error {
 		return err
 	}
 	wailsruntime.Quit(a.ctx)
+	return nil
+}
+
+// CancelUpdate removes the downloaded update file without restarting.
+func (a *App) CancelUpdate() error {
+	if a.updateTmpPath != "" {
+		_ = os.Remove(a.updateTmpPath)
+		a.updateTmpPath = ""
+	}
 	return nil
 }
 

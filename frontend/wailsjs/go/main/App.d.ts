@@ -8,11 +8,15 @@ export function AddServer(arg1:string):Promise<void>;
 
 export function ApplyUpdates(arg1:string,arg2:Array<string>):Promise<void>;
 
+export function CancelUpdate():Promise<void>;
+
 export function CheckForUpdate():Promise<Record<string, any>>;
 
 export function CheckUpdates(arg1:string):Promise<Record<string, any>>;
 
 export function DiscoverAllLaunchers():Promise<Array<string>>;
+
+export function DownloadUpdate():Promise<void>;
 
 export function GetConfig():Promise<config.Config>;
 
@@ -28,12 +32,12 @@ export function RefreshServerInfo(arg1:string):Promise<void>;
 
 export function RemoveServer(arg1:string):Promise<void>;
 
+export function RestartApp():Promise<void>;
+
 export function RunServer(arg1:string):Promise<void>;
 
 export function SaveConfig(arg1:config.Config):Promise<void>;
 
 export function SelectInstancesDir():Promise<string>;
-
-export function UpdateSelf():Promise<void>;
 
 export function UpdateServerURL(arg1:string,arg2:string):Promise<void>;

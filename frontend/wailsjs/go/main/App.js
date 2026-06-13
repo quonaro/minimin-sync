@@ -10,6 +10,10 @@ export function ApplyUpdates(arg1, arg2) {
   return window['go']['main']['App']['ApplyUpdates'](arg1, arg2);
 }
 
+export function CancelUpdate() {
+  return window['go']['main']['App']['CancelUpdate']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -20,6 +24,10 @@ export function CheckUpdates(arg1) {
 
 export function DiscoverAllLaunchers() {
   return window['go']['main']['App']['DiscoverAllLaunchers']();
+}
+
+export function DownloadUpdate() {
+  return window['go']['main']['App']['DownloadUpdate']();
 }
 
 export function GetConfig() {
@@ -50,6 +58,10 @@ export function RemoveServer(arg1) {
   return window['go']['main']['App']['RemoveServer'](arg1);
 }
 
+export function RestartApp() {
+  return window['go']['main']['App']['RestartApp']();
+}
+
 export function RunServer(arg1) {
   return window['go']['main']['App']['RunServer'](arg1);
 }
@@ -60,10 +72,6 @@ export function SaveConfig(arg1) {
 
 export function SelectInstancesDir() {
   return window['go']['main']['App']['SelectInstancesDir']();
-}
-
-export function UpdateSelf() {
-  return window['go']['main']['App']['UpdateSelf']();
 }
 
 export function UpdateServerURL(arg1, arg2) {

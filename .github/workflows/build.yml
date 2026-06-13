@@ -80,6 +80,7 @@ jobs:
       run: npm install
 
     - name: Build
+      shell: bash
       run: |
         if [[ "${{ github.ref }}" == refs/tags/* ]]; then
           VERSION="${{ github.ref_name }}"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import {
   CheckUpdates,
   ApplyUpdates,
@@ -163,6 +163,90 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+interface CategoryInfo {
+  key: string;
+  label: string;
+  dir: string;
+  order: number;
+}
+
+function getCategory(path: string): CategoryInfo {
+  const p = path.toLowerCase().replace(/^\.minecraft\//, "minecraft/");
+  if (p.includes("/mods/")) {
+    return { key: "mods", label: "Mods", dir: "minecraft/mods", order: 0 };
+  }
+  if (p.includes("/resourcepacks/")) {
+    return {
+      key: "resourcepacks",
+      label: "Resource Packs",
+      dir: "minecraft/resourcepacks",
+      order: 1,
+    };
+  }
+  if (p.includes("/shaderpacks/")) {
+    return {
+      key: "shaderpacks",
+      label: "Shader Packs",
+      dir: "minecraft/shaderpacks",
+      order: 2,
+    };
+  }
+  return { key: "other", label: "Other", dir: "", order: 3 };
+}
+
+function basename(path: string): string {
+  const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return idx >= 0 ? path.slice(idx + 1) : path;
+}
+
+function installDir(path: string): string {
+  const normalized = path.replace(/^\.minecraft\//, "minecraft/");
+  const idx = normalized.lastIndexOf("/");
+  return idx >= 0 ? normalized.slice(0, idx) : normalized;
+}
+
+const groupedMissing = computed(() => {
+  const map = new Map<string, { info: CategoryInfo; files: ManifestFile[] }>();
+  for (const f of missing.value) {
+    const cat = getCategory(f.path);
+    const g = map.get(cat.key);
+    if (g) {
+      g.files.push(f);
+    } else {
+      map.set(cat.key, { info: cat, files: [f] });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.info.order - b.info.order);
+});
+
+const groupedOutdated = computed(() => {
+  const map = new Map<string, { info: CategoryInfo; files: ManifestFile[] }>();
+  for (const f of outdated.value) {
+    const cat = getCategory(f.path);
+    const g = map.get(cat.key);
+    if (g) {
+      g.files.push(f);
+    } else {
+      map.set(cat.key, { info: cat, files: [f] });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.info.order - b.info.order);
+});
+
+const groupedOrphan = computed(() => {
+  const map = new Map<string, { info: CategoryInfo; paths: string[] }>();
+  for (const p of orphan.value) {
+    const cat = getCategory(p);
+    const g = map.get(cat.key);
+    if (g) {
+      g.paths.push(p);
+    } else {
+      map.set(cat.key, { info: cat, paths: [p] });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.info.order - b.info.order);
+});
 </script>
 
 <template>
@@ -269,28 +353,45 @@ function formatSize(bytes: number): string {
                 class="w-4 h-4 ml-auto text-neutral-500"
               />
             </button>
-            <div v-if="!collapsed.missing" class="space-y-1">
-              <label
-                v-for="f in missing"
-                :key="f.path"
-                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-              >
+            <div v-if="!collapsed.missing" class="space-y-3">
+              <div v-for="group in groupedMissing" :key="group.info.key">
                 <div
-                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                  :class="
-                    selected.has(f.path)
-                      ? 'text-primary'
-                      : 'text-neutral-500 hover:text-neutral-400'
-                  "
+                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
                 >
-                  <CheckSquare2 v-if="selected.has(f.path)" class="w-5 h-5" />
-                  <Square v-else class="w-5 h-5" />
+                  {{ group.info.label }} &middot; {{ group.info.dir }}
                 </div>
-                <span class="flex-1 text-sm truncate">{{ f.path }}</span>
-                <span class="text-xs text-neutral-500">{{
-                  formatSize(f.size)
-                }}</span>
-              </label>
+                <div class="space-y-1">
+                  <label
+                    v-for="f in group.files"
+                    :key="f.path"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                  >
+                    <div
+                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                      :class="
+                        selected.has(f.path)
+                          ? 'text-primary'
+                          : 'text-neutral-500 hover:text-neutral-400'
+                      "
+                    >
+                      <CheckSquare2
+                        v-if="selected.has(f.path)"
+                        class="w-5 h-5"
+                      />
+                      <Square v-else class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm truncate">{{ basename(f.path) }}</div>
+                      <div class="text-xs text-neutral-500 truncate">
+                        {{ installDir(f.path) }}
+                      </div>
+                    </div>
+                    <span class="text-xs text-neutral-500">{{
+                      formatSize(f.size)
+                    }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -306,28 +407,45 @@ function formatSize(bytes: number): string {
                 class="w-4 h-4 ml-auto text-neutral-500"
               />
             </button>
-            <div v-if="!collapsed.outdated" class="space-y-1">
-              <label
-                v-for="f in outdated"
-                :key="f.path"
-                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-              >
+            <div v-if="!collapsed.outdated" class="space-y-3">
+              <div v-for="group in groupedOutdated" :key="group.info.key">
                 <div
-                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                  :class="
-                    selected.has(f.path)
-                      ? 'text-primary'
-                      : 'text-neutral-500 hover:text-neutral-400'
-                  "
+                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
                 >
-                  <CheckSquare2 v-if="selected.has(f.path)" class="w-5 h-5" />
-                  <Square v-else class="w-5 h-5" />
+                  {{ group.info.label }} &middot; {{ group.info.dir }}
                 </div>
-                <span class="flex-1 text-sm truncate">{{ f.path }}</span>
-                <span class="text-xs text-neutral-500">{{
-                  formatSize(f.size)
-                }}</span>
-              </label>
+                <div class="space-y-1">
+                  <label
+                    v-for="f in group.files"
+                    :key="f.path"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                  >
+                    <div
+                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                      :class="
+                        selected.has(f.path)
+                          ? 'text-primary'
+                          : 'text-neutral-500 hover:text-neutral-400'
+                      "
+                    >
+                      <CheckSquare2
+                        v-if="selected.has(f.path)"
+                        class="w-5 h-5"
+                      />
+                      <Square v-else class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm truncate">{{ basename(f.path) }}</div>
+                      <div class="text-xs text-neutral-500 truncate">
+                        {{ installDir(f.path) }}
+                      </div>
+                    </div>
+                    <span class="text-xs text-neutral-500">{{
+                      formatSize(f.size)
+                    }}</span>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -343,27 +461,41 @@ function formatSize(bytes: number): string {
                 class="w-4 h-4 ml-auto text-neutral-500"
               />
             </button>
-            <div v-if="!collapsed.orphan" class="space-y-1">
-              <label
-                v-for="f in orphan"
-                :key="f"
-                class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
-              >
+            <div v-if="!collapsed.orphan" class="space-y-3">
+              <div v-for="group in groupedOrphan" :key="group.info.key">
                 <div
-                  class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                  :class="
-                    selected.has(f)
-                      ? 'text-primary'
-                      : 'text-neutral-500 hover:text-neutral-400'
-                  "
+                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
                 >
-                  <CheckSquare2 v-if="selected.has(f)" class="w-5 h-5" />
-                  <Square v-else class="w-5 h-5" />
+                  {{ group.info.label }} &middot; {{ group.info.dir }}
                 </div>
-                <span class="flex-1 text-sm truncate text-red-300">{{
-                  f
-                }}</span>
-              </label>
+                <div class="space-y-1">
+                  <label
+                    v-for="p in group.paths"
+                    :key="p"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                  >
+                    <div
+                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
+                      :class="
+                        selected.has(p)
+                          ? 'text-primary'
+                          : 'text-neutral-500 hover:text-neutral-400'
+                      "
+                    >
+                      <CheckSquare2 v-if="selected.has(p)" class="w-5 h-5" />
+                      <Square v-else class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm truncate text-red-300">
+                        {{ basename(p) }}
+                      </div>
+                      <div class="text-xs text-neutral-500 truncate">
+                        {{ installDir(p) }}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
         </div>

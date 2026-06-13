@@ -50,6 +50,7 @@ const updateDownloading = ref(false);
 const updateProgress = ref(0);
 const updateTotal = ref(0);
 const restartModal = ref(false);
+const setupTab = ref<"launcher" | "general">("launcher");
 
 if ((window as any).runtime) {
   EventsOn("updates:available", (updates: any[]) => {
@@ -378,197 +379,213 @@ const pageTitle = computed(() => {
       </div>
     </header>
 
-    <main class="flex-1 overflow-auto p-6 flex flex-col">
-      <div v-if="currentView === 'setup'" class="max-w-md mx-auto mt-8">
-        <h2 class="text-xl font-bold mb-1 text-center">Select Launcher</h2>
-        <p class="text-neutral-400 text-center text-sm mb-6">
-          Choose your Prism Launcher instances directory
-        </p>
-
-        <div
-          v-if="scanning"
-          class="flex items-center justify-center gap-2 text-neutral-400 text-sm py-8"
-        >
-          <Loader2 class="w-4 h-4 animate-spin" />
-          Scanning...
-        </div>
-
-        <div v-else-if="detectedLaunchers.length > 0" class="space-y-2 mb-6">
-          <div
-            v-for="dir in detectedLaunchers"
-            :key="dir"
-            class="flex items-center justify-between p-3 rounded-lg border transition-colors"
+    <main class="flex-1 p-6 flex flex-col">
+      <div
+        v-if="currentView === 'setup'"
+        class="max-w-md mx-auto w-full flex flex-col h-full"
+      >
+        <div class="flex gap-1 mb-4 p-1 bg-neutral-800 rounded-lg shrink-0">
+          <button
+            class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors"
             :class="
-              isSelected(dir)
-                ? 'bg-primary/10 border-primary'
-                : 'bg-neutral-800 border-neutral-700'
+              setupTab === 'launcher'
+                ? 'bg-primary text-white'
+                : 'text-neutral-400 hover:text-white'
             "
+            @click="setupTab = 'launcher'"
           >
-            <div class="min-w-0">
-              <p
-                class="text-sm font-medium"
-                :class="isSelected(dir) ? 'text-primary' : 'text-white'"
-              >
-                {{ launcherName(dir) }}
-              </p>
-              <p class="text-xs text-neutral-500 truncate">{{ dir }}</p>
-            </div>
-            <button
-              v-if="!isSelected(dir)"
-              class="ml-3 px-3 py-1 rounded-md bg-primary hover:bg-primary/90 text-white text-xs font-medium transition-colors flex-shrink-0"
-              @click="selectLauncher(dir)"
-            >
-              Select
-            </button>
-            <span
-              v-else
-              class="ml-3 px-3 py-1 rounded-md bg-primary/20 text-primary text-xs font-medium flex-shrink-0"
-            >
-              Selected
-            </span>
-          </div>
-        </div>
-
-        <div v-else class="text-center py-8 text-neutral-500 text-sm">
-          No launchers found
-        </div>
-
-        <div class="relative mb-4">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-neutral-700"></div>
-          </div>
-          <div class="relative flex justify-center text-sm">
-            <span class="bg-neutral-900 px-2 text-neutral-500"
-              >or enter manually</span
-            >
-          </div>
-        </div>
-
-        <div class="flex gap-2 mb-4">
-          <input
-            v-model="instancesDir"
-            type="text"
-            placeholder="/path/to/instances"
-            class="flex-1 px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
-          />
-          <button
-            class="px-4 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
-            @click="browseDir"
-          >
-            Browse
+            Launcher
           </button>
           <button
-            class="px-4 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-sm font-medium transition-colors"
-            @click="saveDir"
+            class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors"
+            :class="
+              setupTab === 'general'
+                ? 'bg-primary text-white'
+                : 'text-neutral-400 hover:text-white'
+            "
+            @click="setupTab = 'general'"
           >
-            Save
+            General
           </button>
         </div>
 
-        <div class="relative mb-4 mt-6">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-neutral-700"></div>
-          </div>
-          <div class="relative flex justify-center text-sm">
-            <span class="bg-neutral-900 px-2 text-neutral-500">auto-check</span>
-          </div>
-        </div>
-
-        <div class="mb-4">
-          <label class="block text-sm text-neutral-400 mb-1">
-            Check interval (minutes, 0 = disabled)
-          </label>
-          <input
-            v-model.number="autoCheckInterval"
-            type="number"
-            min="0"
-            class="w-full px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
-          />
-        </div>
-
-        <div class="relative mb-4 mt-6">
-          <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-neutral-700"></div>
-          </div>
-          <div class="relative flex justify-center text-sm">
-            <span class="bg-neutral-900 px-2 text-neutral-500">app</span>
-          </div>
-        </div>
-
-        <div class="mb-4 space-y-3">
-          <div
-            v-if="updateChecking"
-            class="flex items-center gap-2 text-sm text-neutral-400 py-2"
-          >
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Checking for updates...
-          </div>
-          <div
-            v-else-if="updateError"
-            class="p-3 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
-          >
-            {{ updateError }}
-          </div>
-          <div v-else-if="updateInfo" class="space-y-2">
-            <p class="text-sm text-neutral-300">
-              Current:
-              <span class="font-mono text-xs">{{ updateInfo.current }}</span>
-            </p>
-            <p
-              v-if="updateInfo.available"
-              class="text-sm text-emerald-400 font-medium"
+        <div class="flex-1 flex flex-col min-h-0">
+          <div v-if="setupTab === 'launcher'" class="flex flex-col gap-4">
+            <div
+              v-if="scanning"
+              class="flex items-center justify-center gap-2 text-neutral-400 text-sm py-8"
             >
-              New version available: {{ updateInfo.version }}
-            </p>
-            <p v-else class="text-sm text-neutral-500">
-              Up to date ({{ updateInfo.version }})
-            </p>
-          </div>
-
-          <div v-if="updateDownloading" class="space-y-2">
-            <div class="flex items-center gap-2 text-sm text-neutral-300">
               <Loader2 class="w-4 h-4 animate-spin" />
-              <span>Downloading update...</span>
+              Scanning...
             </div>
-            <div class="w-full bg-neutral-800 rounded-full h-2">
+
+            <div v-else-if="detectedLaunchers.length > 0" class="space-y-2">
               <div
-                class="bg-primary h-2 rounded-full transition-all"
-                :style="{
-                  width: `${updateTotal > 0 ? Math.min(100, (updateProgress / updateTotal) * 100) : 0}%`,
-                }"
-              ></div>
+                v-for="dir in detectedLaunchers"
+                :key="dir"
+                class="flex items-center justify-between p-3 rounded-lg border transition-colors"
+                :class="
+                  isSelected(dir)
+                    ? 'bg-primary/10 border-primary'
+                    : 'bg-neutral-800 border-neutral-700'
+                "
+              >
+                <div class="min-w-0">
+                  <p
+                    class="text-sm font-medium"
+                    :class="isSelected(dir) ? 'text-primary' : 'text-white'"
+                  >
+                    {{ launcherName(dir) }}
+                  </p>
+                  <p class="text-xs text-neutral-500 truncate">{{ dir }}</p>
+                </div>
+                <button
+                  v-if="!isSelected(dir)"
+                  class="ml-3 px-3 py-1 rounded-md bg-primary hover:bg-primary/90 text-white text-xs font-medium transition-colors flex-shrink-0"
+                  @click="selectLauncher(dir)"
+                >
+                  Select
+                </button>
+                <span
+                  v-else
+                  class="ml-3 px-3 py-1 rounded-md bg-primary/20 text-primary text-xs font-medium flex-shrink-0"
+                >
+                  Selected
+                </span>
+              </div>
             </div>
-            <p class="text-xs text-neutral-500 text-right">
-              {{ Math.round(updateProgress / 1024 / 1024) }} /
-              {{ Math.round(updateTotal / 1024 / 1024) }} MB
-            </p>
+
+            <div v-else class="text-center py-8 text-neutral-500 text-sm">
+              No launchers found
+            </div>
+
+            <div class="relative">
+              <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-neutral-700"></div>
+              </div>
+              <div class="relative flex justify-center text-sm">
+                <span class="bg-neutral-900 px-2 text-neutral-500"
+                  >or enter manually</span
+                >
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              <input
+                v-model="instancesDir"
+                type="text"
+                placeholder="/path/to/instances"
+                class="flex-1 px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+              />
+              <button
+                class="px-4 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+                @click="browseDir"
+              >
+                Browse
+              </button>
+              <button
+                class="px-4 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-sm font-medium transition-colors"
+                @click="saveDir"
+              >
+                Save
+              </button>
+            </div>
+
+            <button
+              class="w-full py-2 rounded-lg text-sm text-neutral-400 hover:text-white transition-colors"
+              @click="scanLaunchers"
+            >
+              Rescan
+            </button>
           </div>
 
-          <button
-            v-if="!updateInfo && !updateChecking && !updateDownloading"
-            class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
-            @click="checkUpdate"
-          >
-            Check for Update
-          </button>
-          <button
-            v-else-if="updateInfo?.available && !updateDownloading"
-            class="w-full py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
-            @click="doUpdate"
-          >
-            Update Now
-          </button>
-        </div>
+          <div v-else class="flex flex-col gap-4">
+            <div>
+              <label class="block text-sm text-neutral-400 mb-1">
+                Check interval (minutes, 0 = disabled)
+              </label>
+              <input
+                v-model.number="autoCheckInterval"
+                type="number"
+                min="0"
+                class="w-full px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
 
-        <button
-          class="w-full py-2 rounded-lg text-sm text-neutral-400 hover:text-white transition-colors"
-          @click="scanLaunchers"
-        >
-          Rescan
-        </button>
+            <div class="space-y-3">
+              <div
+                v-if="updateChecking"
+                class="flex items-center gap-2 text-sm text-neutral-400 py-2"
+              >
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Checking for updates...
+              </div>
+              <div
+                v-else-if="updateError"
+                class="p-3 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
+              >
+                {{ updateError }}
+              </div>
+              <div v-else-if="updateInfo" class="space-y-2">
+                <p class="text-sm text-neutral-300">
+                  Current:
+                  <span class="font-mono text-xs">{{
+                    updateInfo.current
+                  }}</span>
+                </p>
+                <p
+                  v-if="updateInfo.available"
+                  class="text-sm text-emerald-400 font-medium"
+                >
+                  New version available: {{ updateInfo.version }}
+                </p>
+                <p v-else class="text-sm text-neutral-500">
+                  Up to date ({{ updateInfo.version }})
+                </p>
+              </div>
+
+              <div v-if="updateDownloading" class="space-y-2">
+                <div class="flex items-center gap-2 text-sm text-neutral-300">
+                  <Loader2 class="w-4 h-4 animate-spin" />
+                  <span>Downloading update...</span>
+                </div>
+                <div class="w-full bg-neutral-800 rounded-full h-2">
+                  <div
+                    class="bg-primary h-2 rounded-full transition-all"
+                    :style="{
+                      width: `${updateTotal > 0 ? Math.min(100, (updateProgress / updateTotal) * 100) : 0}%`,
+                    }"
+                  ></div>
+                </div>
+                <p class="text-xs text-neutral-500 text-right">
+                  {{ Math.round(updateProgress / 1024 / 1024) }} /
+                  {{ Math.round(updateTotal / 1024 / 1024) }} MB
+                </p>
+              </div>
+
+              <button
+                v-if="!updateInfo && !updateChecking && !updateDownloading"
+                class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
+                @click="checkUpdate"
+              >
+                Check for Update
+              </button>
+              <button
+                v-else-if="updateInfo?.available && !updateDownloading"
+                class="w-full py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
+                @click="doUpdate"
+              >
+                Update Now
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div v-else-if="currentView === 'list'" class="flex-1 flex flex-col">
+      <div
+        v-else-if="currentView === 'list'"
+        class="flex-1 flex flex-col overflow-auto"
+      >
         <ServerList
           :servers="servers"
           :pending-updates="pendingUpdates"

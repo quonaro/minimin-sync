@@ -210,15 +210,18 @@ function formatSize(bytes: number): string {
       </div>
     </div>
 
-    <div
-      v-else-if="error"
-      class="flex-1 p-4 rounded-lg bg-red-900/20 border border-red-800 text-red-300 text-sm"
-    >
-      <div class="flex items-center gap-2 mb-1 font-medium text-red-200">
-        <AlertTriangle class="w-4 h-4" />
-        <span>Could not check for updates</span>
+    <div v-else-if="error" class="flex-1 flex items-center justify-center">
+      <div class="text-center space-y-3 max-w-sm px-4">
+        <div
+          class="mx-auto w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center"
+        >
+          <AlertTriangle class="w-6 h-6 text-red-400" />
+        </div>
+        <div>
+          <p class="text-red-200 font-medium">{{ error }}</p>
+          <p class="text-neutral-500 text-sm mt-1">Please try again later.</p>
+        </div>
       </div>
-      <p class="text-red-300/80">{{ error }}</p>
     </div>
 
     <div v-else class="flex-1 flex flex-col min-h-0">

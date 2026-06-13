@@ -108,7 +108,6 @@ jobs:
 
         APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy-x86_64.AppImage \
           --appdir AppDir \
-          --plugin appimage \
           --output appimage
 
     - name: Package macOS app

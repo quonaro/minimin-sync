@@ -11,12 +11,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"minimin-sync/pkg/config"
 	"minimin-sync/pkg/discovery"
-	"minimin-sync/pkg/disk"
 	"minimin-sync/pkg/instance"
 	"minimin-sync/pkg/sync"
 
@@ -27,7 +25,7 @@ import (
 type App struct {
 	ctx            context.Context
 	config         *config.Config
-	opRunning      atomic.Bool
+	syncService    *sync.Service
 	autoCheckReset chan struct{}
 	updateTmpPath  string
 }
@@ -52,6 +50,7 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.config.Save()
 	}
 
+	a.syncService = sync.NewService(ctx, a.config.InstancesDir)
 	a.autoCheckReset = make(chan struct{})
 	go a.autoCheckLoop()
 }
@@ -64,7 +63,9 @@ func (a *App) autoCheckLoop() {
 		}
 		timer := time.NewTimer(time.Duration(interval) * time.Minute)
 
-		a.runAutoCheck()
+		if !a.syncService.IsOperationRunning() {
+			a.runAutoCheck()
+		}
 
 		select {
 		case <-timer.C:
@@ -79,7 +80,7 @@ func (a *App) autoCheckLoop() {
 
 // IsOperationRunning reports whether AddServer or ApplyUpdates is active.
 func (a *App) IsOperationRunning() bool {
-	return a.opRunning.Load()
+	return a.syncService.IsOperationRunning()
 }
 
 func (a *App) runAutoCheck() {
@@ -103,7 +104,7 @@ func (a *App) runAutoCheck() {
 		if s.Marker == nil {
 			continue
 		}
-		res, err := a.checkUpdatesInternal(s.Name)
+		res, err := a.syncService.CheckUpdates(s.Name)
 		if err != nil {
 			continue
 		}
@@ -149,6 +150,9 @@ func (a *App) SaveConfig(cfg config.Config) error {
 	if err := a.config.Save(); err != nil {
 		return err
 	}
+	if a.syncService != nil {
+		a.syncService = sync.NewService(a.ctx, cfg.InstancesDir)
+	}
 	if oldInterval != cfg.AutoCheckIntervalMinutes && a.autoCheckReset != nil {
 		select {
 		case a.autoCheckReset <- struct{}{}:
@@ -193,7 +197,7 @@ func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
 	if !strings.Contains(url, "?format=") {
 		url = url + "?format=prism"
 	}
-	token, baseURL, err := parseArchiveURL(url)
+	token, baseURL, err := sync.ParseArchiveURL(url)
 	if err != nil {
 		return sync.InfoResponse{}, err
 	}
@@ -205,351 +209,19 @@ func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
 	return *info, nil
 }
 
-// uniqueInstanceName returns a directory name that does not already exist.
-func (a *App) uniqueInstanceName(base string) string {
-	name := base
-	for i := 1; ; i++ {
-		candidate := filepath.Join(a.config.InstancesDir, name)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return name
-		}
-		name = fmt.Sprintf("%s-%d", base, i)
-	}
-}
-
 // AddServer installs a new server from a prism archive URL asynchronously.
 func (a *App) AddServer(url string) error {
-	if !a.opRunning.CompareAndSwap(false, true) {
-		return fmt.Errorf("another operation is already in progress")
-	}
-
-	if !strings.Contains(url, "?format=") {
-		url = url + "?format=prism"
-	}
-	token, baseURL, err := parseArchiveURL(url)
-	if err != nil {
-		a.opRunning.Store(false)
-		return err
-	}
-
-	go func() {
-		defer a.opRunning.Store(false)
-		client := sync.NewClient(baseURL, token)
-
-		wailsruntime.EventsEmit(a.ctx, "addServer:status", "fetching info")
-		info, err := client.FetchInfo()
-		if err != nil {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
-			return
-		}
-
-		name := sanitizeName(info.ServerName)
-		if name == "" {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", "server name is empty")
-			return
-		}
-		name = a.uniqueInstanceName(name)
-
-		wailsruntime.EventsEmit(a.ctx, "addServer:status", "downloading archive")
-		size, err := client.ArchiveSize("prism")
-		if err == nil && size > 0 {
-			free, derr := disk.FreeBytes(a.config.InstancesDir)
-			if derr == nil && uint64(size) > free {
-				wailsruntime.EventsEmit(a.ctx, "addServer:error", fmt.Sprintf("not enough disk space (need %d MB, have %d MB)", size/1024/1024, int64(free)/1024/1024))
-				return
-			}
-		}
-
-		tmpPath, err := client.DownloadArchive("prism", func(d, t int64) {
-			wailsruntime.EventsEmit(a.ctx, "addServer:progress", d, t)
-		})
-		if err != nil {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
-			return
-		}
-		defer func() { _ = os.Remove(tmpPath) }()
-
-		instanceDir := filepath.Join(a.config.InstancesDir, name)
-		if err := os.MkdirAll(instanceDir, 0o755); err != nil {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
-			return
-		}
-		cleanOnFail := true
-		defer func() {
-			if cleanOnFail {
-				_ = os.RemoveAll(instanceDir)
-			}
-		}()
-
-		wailsruntime.EventsEmit(a.ctx, "addServer:status", "extracting")
-		if err := sync.ExtractAll(tmpPath, instanceDir); err != nil {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
-			return
-		}
-
-		marker := &instance.Marker{
-			ServerID:   name,
-			Token:      token,
-			BaseURL:    baseURL,
-			LastSyncAt: time.Now().UTC().Format(time.RFC3339),
-			ExpiresAt:  info.ExpiresAt,
-		}
-		wailsruntime.LogInfof(a.ctx, "writing marker to %s", filepath.Join(instanceDir, instance.MarkerFile))
-		if err := instance.WriteMarker(instanceDir, marker); err != nil {
-			wailsruntime.EventsEmit(a.ctx, "addServer:error", err.Error())
-			return
-		}
-
-		cleanOnFail = false
-		wailsruntime.EventsEmit(a.ctx, "addServer:done", info.ServerName)
-	}()
-
-	return nil
-}
-
-func (a *App) checkUpdatesInternal(serverID string) (map[string]interface{}, error) {
-	dir := a.config.InstancesDir
-	if dir == "" {
-		return nil, fmt.Errorf("instances directory not configured")
-	}
-
-	instanceDir := filepath.Join(dir, serverID)
-	wailsruntime.LogInfof(a.ctx, "checking updates for %s in %s", serverID, instanceDir)
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "connecting")
-
-	marker, err := instance.ReadMarker(instanceDir)
-	if err != nil {
-		wailsruntime.LogErrorf(a.ctx, "read marker failed: %v", err)
-		return nil, err
-	}
-	wailsruntime.LogInfof(a.ctx, "marker read: baseURL=%s token=%s...", marker.BaseURL, marker.Token[:8])
-
-	client := sync.NewClient(marker.BaseURL, marker.Token)
-
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "fetching_info")
-	info, err := client.FetchInfo()
-	if err != nil {
-		wailsruntime.LogErrorf(a.ctx, "fetch info failed for %s: %v", serverID, err)
-	} else {
-		marker.ExpiresAt = info.ExpiresAt
-		_ = instance.WriteMarker(instanceDir, marker)
-	}
-
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "fetching_manifest")
-	manifest, err := client.FetchManifest()
-	if err != nil {
-		wailsruntime.LogErrorf(a.ctx, "fetch manifest failed: %v", err)
-		return nil, err
-	}
-	wailsruntime.LogInfof(a.ctx, "manifest fetched: %d files", len(manifest.Files))
-
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_files")
-	mcDir := "minecraft"
-	localDir := filepath.Join(instanceDir, mcDir)
-	var missing []sync.ManifestFile
-	var outdated []sync.ManifestFile
-	localFiles := make(map[string]bool)
-
-	for _, mf := range manifest.Files {
-		localPath := resolveMcPath(instanceDir, mf.Path)
-		info, err := os.Stat(localPath)
-		if err != nil {
-			missing = append(missing, mf)
-			continue
-		}
-		localFiles[normalizeMcPath(mf.Path)] = true
-		if info.Size() != mf.Size {
-			outdated = append(outdated, mf)
-			continue
-		}
-		hash, err := sync.ComputeSHA256(localPath)
-		if err != nil || hash != mf.SHA256 {
-			outdated = append(outdated, mf)
-		}
-	}
-
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "scanning_orphan")
-	var orphan []string
-	for _, sub := range []string{"mods", "resourcepacks", "shaderpacks", "scripts", "kubejs", "defaultconfigs"} {
-		subDir := filepath.Join(localDir, sub)
-		entries, err := os.ReadDir(subDir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			relPath := filepath.ToSlash(filepath.Join(mcDir, sub, e.Name()))
-			if !localFiles[relPath] {
-				orphan = append(orphan, relPath)
-			}
-		}
-	}
-
-	wailsruntime.EventsEmit(a.ctx, "checkUpdates:status", "complete")
-	result := map[string]interface{}{
-		"missing":  missing,
-		"outdated": outdated,
-		"orphan":   orphan,
-	}
-	wailsruntime.LogInfof(a.ctx, "check complete: missing=%d outdated=%d orphan=%d", len(missing), len(outdated), len(orphan))
-
-	marker.LastCheckAt = time.Now().UTC().Format(time.RFC3339)
-	_ = instance.WriteMarker(instanceDir, marker)
-
-	return result, nil
+	return a.syncService.AddServer(url)
 }
 
 // CheckUpdates compares local files with the remote manifest.
 func (a *App) CheckUpdates(serverID string) (map[string]interface{}, error) {
-	return a.checkUpdatesInternal(serverID)
+	return a.syncService.CheckUpdates(serverID)
 }
 
 // ApplyUpdates downloads individual files and applies selected changes asynchronously.
 func (a *App) ApplyUpdates(serverID string, selected []string) error {
-	dir := a.config.InstancesDir
-	if dir == "" {
-		return fmt.Errorf("instances directory not configured")
-	}
-
-	instanceDir := filepath.Join(dir, serverID)
-	marker, err := instance.ReadMarker(instanceDir)
-	if err != nil {
-		return err
-	}
-
-	if !a.opRunning.CompareAndSwap(false, true) {
-		return fmt.Errorf("another operation is already in progress")
-	}
-
-	go func() {
-		defer a.opRunning.Store(false)
-
-		client := sync.NewClient(marker.BaseURL, marker.Token)
-
-		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "fetching manifest")
-		manifest, err := client.FetchManifest()
-		if err != nil {
-			wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", err.Error())
-			return
-		}
-
-		manifestMap := make(map[string]sync.ManifestFile)
-		for _, mf := range manifest.Files {
-			manifestMap[mf.Path] = mf
-		}
-
-		wailsruntime.LogInfof(a.ctx, "ApplyUpdates selected=%d", len(selected))
-		var toDownload []sync.ManifestFile
-		var toDelete []string
-		for _, p := range selected {
-			if mf, ok := manifestMap[p]; ok {
-				toDownload = append(toDownload, mf)
-				wailsruntime.LogInfof(a.ctx, "toDownload: %s (%d bytes)", resolveMcPath(instanceDir, p), mf.Size)
-			} else {
-				toDelete = append(toDelete, p)
-				wailsruntime.LogInfof(a.ctx, "toDelete: %s", resolveMcPath(instanceDir, p))
-			}
-		}
-
-		backupDir := filepath.Join(instanceDir, ".minimin-backup")
-		_ = os.RemoveAll(backupDir)
-
-		for _, p := range selected {
-			src := resolveMcPath(instanceDir, p)
-			if _, err := os.Stat(src); err == nil {
-				rel, _ := filepath.Rel(instanceDir, src)
-				dst := filepath.Join(backupDir, rel)
-				_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-				_ = os.Rename(src, dst)
-			}
-		}
-
-		for _, p := range toDelete {
-			target := resolveMcPath(instanceDir, p)
-			_ = os.Remove(target)
-		}
-
-		var totalBytes int64
-		for _, mf := range toDownload {
-			totalBytes += mf.Size
-		}
-
-		if totalBytes > 0 {
-			free, derr := disk.FreeBytes(instanceDir)
-			if derr == nil && uint64(totalBytes) > free {
-				_ = sync.RestoreBackup(backupDir, instanceDir)
-				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("not enough disk space (need %d MB, have %d MB)", totalBytes/1024/1024, int64(free)/1024/1024))
-				return
-			}
-		}
-
-		const workers = 4
-		type job struct {
-			mf   sync.ManifestFile
-			dest string
-		}
-		jobs := make(chan job, len(toDownload))
-		for _, mf := range toDownload {
-			dest := resolveMcPath(instanceDir, mf.Path)
-			jobs <- job{mf: mf, dest: dest}
-		}
-		close(jobs)
-
-		var downloaded atomic.Int64
-		errChan := make(chan error, workers)
-
-		for i := 0; i < workers; i++ {
-			go func() {
-				for j := range jobs {
-					wailsruntime.LogInfof(a.ctx, "downloading %s", j.dest)
-					wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", fmt.Sprintf("downloading %s", filepath.Base(j.dest)))
-					if err := client.DownloadFile(j.mf.Path, j.dest, nil); err != nil {
-						wailsruntime.LogErrorf(a.ctx, "download failed %s: %v", j.dest, err)
-						errChan <- err
-						return
-					}
-					wailsruntime.LogInfof(a.ctx, "download ok %s", j.dest)
-					d := downloaded.Add(j.mf.Size)
-					wailsruntime.EventsEmit(a.ctx, "applyUpdates:progress", d, totalBytes)
-				}
-				errChan <- nil
-			}()
-		}
-
-		var downloadErr error
-		for i := 0; i < workers; i++ {
-			if err := <-errChan; err != nil && downloadErr == nil {
-				downloadErr = err
-			}
-		}
-
-		if downloadErr != nil {
-			_ = sync.RestoreBackup(backupDir, instanceDir)
-			wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", downloadErr.Error())
-			return
-		}
-
-		wailsruntime.EventsEmit(a.ctx, "applyUpdates:status", "verifying files")
-		for _, mf := range toDownload {
-			dest := resolveMcPath(instanceDir, mf.Path)
-			hash, err := sync.ComputeSHA256(dest)
-			if err != nil || hash != mf.SHA256 {
-				_ = sync.RestoreBackup(backupDir, instanceDir)
-				wailsruntime.EventsEmit(a.ctx, "applyUpdates:error", fmt.Sprintf("hash mismatch for %s", dest))
-				return
-			}
-		}
-
-		marker.LastSyncAt = time.Now().UTC().Format(time.RFC3339)
-		_ = instance.WriteMarker(instanceDir, marker)
-		_ = os.RemoveAll(backupDir)
-
-		wailsruntime.EventsEmit(a.ctx, "applyUpdates:done", serverID)
-	}()
-
-	return nil
+	return a.syncService.ApplyUpdates(serverID, selected)
 }
 
 func detectLauncherFromPath(dir string) string {
@@ -586,23 +258,6 @@ func (a *App) OpenInstanceDir(serverID string) error {
 		cmd = exec.Command("xdg-open", instanceDir)
 	}
 	return cmd.Start()
-}
-
-// resolveMcPath turns a manifest path into an absolute filesystem path.
-// The server manifest uses ".minecraft/..." but Prism Launcher stores files in "minecraft/...".
-func resolveMcPath(instanceDir string, manifestPath string) string {
-	if strings.HasPrefix(manifestPath, ".minecraft/") {
-		return filepath.Join(instanceDir, "minecraft", filepath.FromSlash(manifestPath[len(".minecraft/"):]))
-	}
-	return filepath.Join(instanceDir, filepath.FromSlash(manifestPath))
-}
-
-// normalizeMcPath adapts a manifest path for local key comparison.
-func normalizeMcPath(manifestPath string) string {
-	if strings.HasPrefix(manifestPath, ".minecraft/") {
-		return "minecraft/" + manifestPath[len(".minecraft/"):]
-	}
-	return manifestPath
 }
 
 // findLauncherBinary tries to locate the launcher executable.
@@ -745,7 +400,7 @@ func (a *App) UpdateServerURL(serverID, url string) error {
 	if !strings.Contains(url, "?format=") {
 		url = url + "?format=prism"
 	}
-	token, baseURL, err := parseArchiveURL(url)
+	token, baseURL, err := sync.ParseArchiveURL(url)
 	if err != nil {
 		return err
 	}
@@ -990,38 +645,4 @@ func (a *App) HasPendingUpdate() bool {
 	}
 	_, err = os.Stat(currentExe + ".tmp")
 	return err == nil
-}
-
-func sanitizeName(name string) string {
-	replacer := strings.NewReplacer(
-		"/", "-",
-		"\\", "-",
-		":", "-",
-		"*", "-",
-		"?", "-",
-		"\"", "-",
-		"<", "-",
-		">", "-",
-		"|", "-",
-		" ", "_",
-	)
-	return strings.TrimSpace(replacer.Replace(name))
-}
-
-func parseArchiveURL(rawURL string) (token, baseURL string, err error) {
-	for _, sep := range []string{"/api/client-archive/", "/client-archive/"} {
-		parts := strings.Split(rawURL, sep)
-		if len(parts) == 2 {
-			baseURL = strings.TrimSuffix(parts[0], "/")
-			tokenPart := parts[1]
-			if idx := strings.Index(tokenPart, "?"); idx != -1 {
-				tokenPart = tokenPart[:idx]
-			}
-			token = strings.Trim(tokenPart, "/")
-			if token != "" {
-				return token, baseURL, nil
-			}
-		}
-	}
-	return "", "", fmt.Errorf("invalid archive URL")
 }

@@ -23,6 +23,7 @@ jobs:
         mkdir release
         cp artifacts/minimin-sync-linux-amd64/minimin-sync release/minimin-sync-linux-amd64
         cp artifacts/minimin-sync-windows-amd64/minimin-sync.exe release/minimin-sync-windows-amd64.exe
+        cp artifacts/minimin-sync-linux-appimage/minimin-sync-x86_64.AppImage release/minimin-sync-linux-x86_64.AppImage
         cp artifacts/minimin-sync-darwin-universal/minimin-sync-darwin-universal.zip release/minimin-sync-darwin-universal.zip
 
     - name: Create Release
@@ -69,7 +70,7 @@ jobs:
       if: matrix.os == 'ubuntu-22.04'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev gcc
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev gcc
 
     - name: Install Wails CLI
       run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -79,7 +80,36 @@ jobs:
       run: npm install
 
     - name: Build
-      run: wails build -platform ${{ matrix.platform }} -ldflags "-X main.version=${{ github.sha }}"
+      run: wails build -tags webkit2_41 -platform ${{ matrix.platform }} -ldflags "-X main.version=${{ github.sha }}"
+
+    - name: Build AppImage
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+        wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+        chmod +x linuxdeploy-plugin-appimage-x86_64.AppImage
+
+        mkdir -p AppDir/usr/bin
+        mkdir -p AppDir/usr/share/applications
+        mkdir -p AppDir/usr/share/icons/hicolor/192x192/apps
+
+        cp build/bin/minimin-sync AppDir/usr/bin/
+        cp frontend/public/favicon/web-app-manifest-192x192.png AppDir/usr/share/icons/hicolor/192x192/apps/minimin-sync.png
+
+        cat > AppDir/usr/share/applications/minimin-sync.desktop <<EOF
+        [Desktop Entry]
+        Name=minimin-sync
+        Exec=minimin-sync
+        Icon=minimin-sync
+        Type=Application
+        Categories=Utility;
+        EOF
+
+        APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy-x86_64.AppImage \
+          --appdir AppDir \
+          --plugin appimage \
+          --output appimage
 
     - name: Package macOS app
       if: matrix.os == 'macos-latest'
@@ -90,3 +120,10 @@ jobs:
       with:
         name: minimin-sync-${{ matrix.artifact_name }}
         path: ${{ matrix.os == 'macos-latest' && 'build/bin/minimin-sync-darwin-universal.zip' || format('build/bin/{0}', matrix.artifact) }}
+
+    - name: Upload AppImage artifact
+      if: matrix.os == 'ubuntu-22.04'
+      uses: actions/upload-artifact@v4
+      with:
+        name: minimin-sync-linux-appimage
+        path: minimin-sync-x86_64.AppImage

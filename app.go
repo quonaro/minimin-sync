@@ -129,6 +129,11 @@ func (a *App) runAutoCheck() {
 	wailsruntime.EventsEmit(a.ctx, "servers:reload")
 }
 
+// GetVersion returns the current application version.
+func (a *App) GetVersion() string {
+	return version
+}
+
 // GetConfig returns the current configuration.
 func (a *App) GetConfig() config.Config {
 	if a.config == nil {

@@ -16,6 +16,7 @@ import {
   DownloadUpdate,
   RestartApp,
   CancelUpdate,
+  GetVersion,
 } from "../wailsjs/go/main/App";
 import { config } from "../wailsjs/go/models";
 import { Settings, Loader2, ArrowLeft } from "@lucide/vue";
@@ -51,6 +52,8 @@ const updateProgress = ref(0);
 const updateTotal = ref(0);
 const restartModal = ref(false);
 const setupTab = ref<"launcher" | "general">("launcher");
+const appVersion = ref("");
+const versionToast = ref(false);
 
 if ((window as any).runtime) {
   EventsOn("updates:available", (updates: any[]) => {
@@ -83,6 +86,10 @@ onErrorCaptured((err) => {
 });
 
 onMounted(async () => {
+  try {
+    appVersion.value = await GetVersion();
+  } catch {}
+
   const cfg = await GetConfig();
   autoCheckInterval.value = cfg.autoCheckIntervalMinutes || 5;
   if (cfg.instancesDir) {
@@ -269,6 +276,26 @@ function launcherType(dir: string): string {
   return "";
 }
 
+let logoClickCount = 0;
+let logoClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+function handleLogoClick() {
+  logoClickCount++;
+  if (logoClickCount === 1) {
+    logoClickTimer = setTimeout(() => {
+      logoClickCount = 0;
+    }, 500);
+  }
+  if (logoClickCount >= 3) {
+    logoClickCount = 0;
+    if (logoClickTimer) clearTimeout(logoClickTimer);
+    versionToast.value = true;
+    setTimeout(() => {
+      versionToast.value = false;
+    }, 2000);
+  }
+}
+
 async function checkUpdate() {
   updateChecking.value = true;
   updateError.value = "";
@@ -347,9 +374,23 @@ const pageTitle = computed(() => {
     <header
       class="px-6 py-4 border-b border-neutral-700 flex items-center relative"
     >
-      <div class="flex items-center gap-1.5 w-1/3">
-        <img src="/img/MiniMin_L.avif" alt="MiniMin" class="h-7 w-auto" />
-        <img src="/img/MiniMin_T_light.avif" alt="MiniMin" class="h-6 w-auto" />
+      <div class="flex items-center gap-1.5 w-1/3 relative">
+        <div class="relative" @click="handleLogoClick">
+          <div class="flex items-center gap-1.5 cursor-default select-none">
+            <img src="/img/MiniMin_L.avif" alt="MiniMin" class="h-7 w-auto" />
+            <img
+              src="/img/MiniMin_T_light.avif"
+              alt="MiniMin"
+              class="h-6 w-auto"
+            />
+          </div>
+          <div
+            v-if="versionToast"
+            class="absolute top-full left-0 mt-2 px-3 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 whitespace-nowrap z-50"
+          >
+            v{{ appVersion }}
+          </div>
+        </div>
       </div>
 
       <div class="flex-1 text-center">

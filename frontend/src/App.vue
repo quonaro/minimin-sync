@@ -399,7 +399,7 @@ const pageTitle = computed(() => {
     case "add":
       return "Add Server";
     case "check":
-      return "Check Updates";
+      return selectedServer.value;
     default:
       return "";
   }
@@ -451,6 +451,7 @@ const pageTitle = computed(() => {
           pageTitle
         }}</span>
         <Loader2
+          v-if="currentView === 'list'"
           class="w-4 h-4 text-primary cursor-pointer transition-all"
           :class="
             autoCheckRunning
@@ -463,7 +464,11 @@ const pageTitle = computed(() => {
 
       <div class="flex items-center gap-3 w-1/3 justify-end">
         <button
-          v-if="currentView === 'setup' || currentView === 'add'"
+          v-if="
+            currentView === 'setup' ||
+            currentView === 'add' ||
+            currentView === 'check'
+          "
           class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
           @click="goList"
         >

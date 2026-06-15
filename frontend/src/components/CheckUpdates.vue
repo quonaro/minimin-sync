@@ -7,7 +7,6 @@ import {
 } from "../../wailsjs/go/main/App";
 import {
   Loader2,
-  ArrowLeft,
   Download,
   AlertTriangle,
   CheckCircle,
@@ -321,16 +320,6 @@ watch(activeTab, () => {
 
 <template>
   <div class="h-full flex flex-col">
-    <div class="flex items-center gap-3 mb-6 flex-shrink-0">
-      <button
-        class="p-2 rounded-lg bg-[#262626] hover:bg-[#262626] transition-colors"
-        @click="emit('back')"
-      >
-        <ArrowLeft class="w-4 h-4" />
-      </button>
-      <h2 class="text-xl font-bold">{{ serverId }}</h2>
-    </div>
-
     <div
       v-if="loading"
       class="flex-1 flex flex-col items-center justify-center gap-6 text-neutral-400"

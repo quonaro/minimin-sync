@@ -69,6 +69,10 @@ if ((window as any).runtime) {
     loadServers();
   });
 
+  EventsOn("applyUpdates:done", (serverID: string) => {
+    delete pendingUpdates.value[serverID];
+  });
+
   EventsOn("updateSelf:progress", (d: number, t: number) => {
     updateProgress.value = d;
     updateTotal.value = t;

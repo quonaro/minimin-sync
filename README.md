@@ -1,6 +1,18 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Minimin Sync Logo" width="462">
+</p>
+
+<p align="center">
+  <a href="https://github.com/quonaro/minimin-sync/actions/workflows/build.yml">
+    <img src="https://github.com/quonaro/minimin-sync/actions/workflows/build.yml/badge.svg" alt="Build">
+  </a>
+  <img src="https://img.shields.io/badge/Go-1.23-blue?logo=go" alt="Go Version">
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License">
+</p>
+
 # Minimin Sync
 
-A lightweight desktop client for syncing Minecraft modpacks with friends. Works together with [Minimin](https://github.com/quonaro/minimin) — the web-based server panel that generates archive links. Built with [Wails](https://wails.io/) (Go + Vue 3 + TailwindCSS).
+A lightweight desktop client for syncing Minecraft modpacks with friends. Works together with [Minimin](https://github.com/quonaro/minimin) — the web-based server panel that generates archive links. Built with [Wails](https://wails.io/) ([GitHub](https://github.com/wailsapp/wails)) — Go + Vue 3 + TailwindCSS.
 
 ## What it does
 
@@ -59,7 +71,7 @@ The compiled binary will be in `build/bin/`.
 - **Backend (`app.go`, `pkg/`)** — Go logic for discovery, sync, disk checks, launcher detection.
 - **`pkg/sync/`** — Core sync engine: manifest comparison, delta downloads, extraction, backups.
 - **`pkg/discovery/`** — Auto-detects launcher install directories across OSes.
-- **Frontend (`frontend/`)** — Vue 3 + Tailwind UI that binds to Go methods via Wails runtime.
+- **Frontend (`frontend/`)** — Vue 3 + Tailwind UI that binds to Go methods via [Wails](https://wails.io/) runtime.
 
 ## Screenshots
 

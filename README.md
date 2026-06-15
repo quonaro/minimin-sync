@@ -1,6 +1,6 @@
 # Minimin Sync
 
-A lightweight desktop client for syncing Minecraft modpacks with friends. Built with [Wails](https://wails.io/) (Go + Vue 3 + TailwindCSS).
+A lightweight desktop client for syncing Minecraft modpacks with friends. Works together with [Minimin](https://github.com/quonaro/minimin) — the web-based server panel that generates archive links. Built with [Wails](https://wails.io/) (Go + Vue 3 + TailwindCSS).
 
 ## What it does
 
@@ -60,6 +60,30 @@ The compiled binary will be in `build/bin/`.
 - **`pkg/sync/`** — Core sync engine: manifest comparison, delta downloads, extraction, backups.
 - **`pkg/discovery/`** — Auto-detects launcher install directories across OSes.
 - **Frontend (`frontend/`)** — Vue 3 + Tailwind UI that binds to Go methods via Wails runtime.
+
+## Screenshots
+
+> Commit screenshots to `docs/screenshots/` (or use GitHub drag-n-drop upload) and replace the paths below.
+
+### Main Window
+
+![Main Window](docs/screenshots/main-window.png)
+List of synced servers with update status.
+
+### Add Server
+
+![Add Server](docs/screenshots/add-server.png)
+Add server dialog — pasting an archive link from Minimin.
+
+### Update Check
+
+![Update Check](docs/screenshots/update-check.png)
+Update check result — missing / outdated / orphaned files list.
+
+### Settings
+
+![Settings](docs/screenshots/settings.png)
+Settings — launcher path, instances directory, auto-check interval.
 
 ## License
 

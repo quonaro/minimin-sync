@@ -253,7 +253,7 @@ const groupedOrphan = computed(() => {
   <div class="h-full flex flex-col">
     <div class="flex items-center gap-3 mb-6 flex-shrink-0">
       <button
-        class="p-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 transition-colors"
+        class="p-2 rounded-lg bg-[#262626] hover:bg-[#262626] transition-colors"
         @click="emit('back')"
       >
         <ArrowLeft class="w-4 h-4" />
@@ -364,7 +364,7 @@ const groupedOrphan = computed(() => {
                   <label
                     v-for="f in group.files"
                     :key="f.path"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
                   >
                     <div
                       class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
@@ -418,7 +418,7 @@ const groupedOrphan = computed(() => {
                   <label
                     v-for="f in group.files"
                     :key="f.path"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
                   >
                     <div
                       class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
@@ -472,7 +472,7 @@ const groupedOrphan = computed(() => {
                   <label
                     v-for="p in group.paths"
                     :key="p"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-neutral-800/50 hover:bg-neutral-800 cursor-pointer"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
                   >
                     <div
                       class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
@@ -524,7 +524,7 @@ const groupedOrphan = computed(() => {
           </div>
           <div
             v-if="applyTotal > 0"
-            class="w-full bg-neutral-800 rounded-full h-2"
+            class="w-full bg-[#262626] rounded-full h-2"
           >
             <div
               class="bg-primary h-2 rounded-full transition-all"

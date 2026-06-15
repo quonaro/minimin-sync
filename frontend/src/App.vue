@@ -248,7 +248,6 @@ function goList() {
 function goCheck(serverId: string) {
   selectedServer.value = serverId;
   currentView.value = "check";
-  delete pendingUpdates.value[serverId];
 }
 
 async function goSetup() {
@@ -361,7 +360,7 @@ const pageTitle = computed(() => {
 </script>
 
 <template>
-  <div class="h-screen w-screen bg-neutral-900 text-neutral-100 flex flex-col">
+  <div class="h-screen w-screen bg-[#0F0F10] text-neutral-100 flex flex-col">
     <div
       v-if="appError"
       class="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-8"
@@ -371,7 +370,7 @@ const pageTitle = computed(() => {
         appError
       }}</pre>
       <button
-        class="mt-4 px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm"
+        class="mt-4 px-4 py-2 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm"
         @click="appError = ''"
       >
         Dismiss
@@ -393,7 +392,7 @@ const pageTitle = computed(() => {
           </div>
           <div
             v-if="versionToast"
-            class="absolute top-full left-0 mt-2 px-3 py-1.5 rounded-lg bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 whitespace-nowrap z-50"
+            class="absolute top-full left-0 mt-2 px-3 py-1.5 rounded-lg bg-[#262626] border border-neutral-700 text-xs text-neutral-300 whitespace-nowrap z-50"
           >
             {{ appVersion }}
           </div>
@@ -417,7 +416,7 @@ const pageTitle = computed(() => {
         </button>
         <button
           v-else
-          class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 transition-colors group"
+          class="p-2 rounded-lg bg-[#262626] hover:bg-[#262626] transition-colors group"
           @click="goSetup"
         >
           <Settings
@@ -432,7 +431,7 @@ const pageTitle = computed(() => {
         v-if="currentView === 'setup'"
         class="max-w-md mx-auto w-full flex flex-col h-full"
       >
-        <div class="flex gap-1 mb-4 p-1 bg-neutral-800 rounded-lg shrink-0">
+        <div class="flex gap-1 mb-4 p-1 bg-[#262626] rounded-lg shrink-0">
           <button
             class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors"
             :class="
@@ -475,7 +474,7 @@ const pageTitle = computed(() => {
                 :class="
                   isSelected(dir)
                     ? 'bg-primary/10 border-primary'
-                    : 'bg-neutral-800 border-neutral-700'
+                    : 'bg-[#262626] border-neutral-700'
                 "
               >
                 <div class="min-w-0">
@@ -512,7 +511,7 @@ const pageTitle = computed(() => {
                 <div class="w-full border-t border-neutral-700"></div>
               </div>
               <div class="relative flex justify-center text-sm">
-                <span class="bg-neutral-900 px-2 text-neutral-500"
+                <span class="bg-[#0F0F10] px-2 text-neutral-500"
                   >or enter manually</span
                 >
               </div>
@@ -523,10 +522,10 @@ const pageTitle = computed(() => {
                 v-model="instancesDir"
                 type="text"
                 placeholder="/path/to/instances"
-                class="flex-1 px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+                class="flex-1 px-4 py-2.5 rounded-lg bg-[#262626] border border-neutral-700 text-sm focus:outline-none focus:border-primary"
               />
               <button
-                class="px-4 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+                class="px-4 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors"
                 @click="browseDir"
               >
                 Browse
@@ -556,7 +555,7 @@ const pageTitle = computed(() => {
                 v-model.number="autoCheckInterval"
                 type="number"
                 min="0"
-                class="w-full px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+                class="w-full px-4 py-2.5 rounded-lg bg-[#262626] border border-neutral-700 text-sm focus:outline-none focus:border-primary"
               />
             </div>
 
@@ -597,7 +596,7 @@ const pageTitle = computed(() => {
                   <Loader2 class="w-4 h-4 animate-spin" />
                   <span>Downloading update...</span>
                 </div>
-                <div class="w-full bg-neutral-800 rounded-full h-2">
+                <div class="w-full bg-[#262626] rounded-full h-2">
                   <div
                     class="bg-primary h-2 rounded-full transition-all"
                     :style="{
@@ -617,7 +616,7 @@ const pageTitle = computed(() => {
                   !updateDownloading &&
                   (!updateInfo || !updateInfo.available)
                 "
-                class="w-full py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-sm text-neutral-300 transition-colors"
+                class="w-full py-2 rounded-lg bg-[#262626] hover:bg-[#262626] border border-neutral-700 text-sm text-neutral-300 transition-colors"
                 @click="checkUpdate"
               >
                 Check for Update
@@ -661,7 +660,7 @@ const pageTitle = computed(() => {
         class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
       >
         <div
-          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700"
+          class="max-w-sm w-full p-6 rounded-xl bg-[#262626] border border-neutral-700"
         >
           <h3 class="text-lg font-bold mb-2">Delete Server</h3>
           <p class="text-neutral-400 text-sm mb-6">
@@ -671,7 +670,7 @@ const pageTitle = computed(() => {
           </p>
           <div class="flex gap-3">
             <button
-              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              class="flex-1 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors"
               @click="cancelDelete"
             >
               Cancel
@@ -691,7 +690,7 @@ const pageTitle = computed(() => {
         class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
       >
         <div
-          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700"
+          class="max-w-sm w-full p-6 rounded-xl bg-[#262626] border border-neutral-700"
         >
           <h3 class="text-lg font-bold mb-2">Edit Server Link</h3>
           <p class="text-neutral-400 text-sm mb-4">
@@ -702,7 +701,7 @@ const pageTitle = computed(() => {
             v-model="editUrl"
             type="text"
             placeholder="https://host/api/client-archive/abc123"
-            class="w-full px-4 py-2.5 rounded-lg bg-neutral-900 border border-neutral-700 text-sm focus:outline-none focus:border-primary mb-4"
+            class="w-full px-4 py-2.5 rounded-lg bg-[#262626] border border-neutral-700 text-sm focus:outline-none focus:border-primary mb-4"
           />
           <div
             v-if="editError"
@@ -712,7 +711,7 @@ const pageTitle = computed(() => {
           </div>
           <div class="flex gap-3">
             <button
-              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              class="flex-1 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors"
               @click="cancelEdit"
             >
               Cancel
@@ -740,7 +739,7 @@ const pageTitle = computed(() => {
         class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
       >
         <div
-          class="max-w-sm w-full p-6 rounded-xl bg-neutral-800 border border-neutral-700 text-center"
+          class="max-w-sm w-full p-6 rounded-xl bg-[#262626] border border-neutral-700 text-center"
         >
           <h3 class="text-lg font-bold mb-2">Update Ready</h3>
           <p class="text-neutral-400 text-sm mb-6">
@@ -749,7 +748,7 @@ const pageTitle = computed(() => {
           </p>
           <div class="flex gap-3">
             <button
-              class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors"
+              class="flex-1 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors"
               @click="cancelRestart"
             >
               Later

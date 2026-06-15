@@ -112,7 +112,7 @@ function formatDateTime(iso?: string): string {
       <div
         v-for="s in servers"
         :key="s.Name"
-        class="p-4 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-between"
+        class="p-4 rounded-xl bg-[#262626] border border-neutral-700 flex items-center justify-between"
       >
         <div>
           <div class="flex items-center gap-2">
@@ -168,7 +168,7 @@ function formatDateTime(iso?: string): string {
               }}
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors group"
+              class="p-2 rounded-lg bg-[#262626] hover:bg-[#262626] text-neutral-300 hover:text-white transition-colors group"
               :title="'Open folder'"
               @click="emit('open-dir', s.Name)"
             >
@@ -177,7 +177,7 @@ function formatDateTime(iso?: string): string {
               />
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-neutral-300 hover:text-white transition-colors group"
+              class="p-2 rounded-lg bg-[#262626] hover:bg-[#262626] text-neutral-300 hover:text-white transition-colors group"
               :title="'Edit link'"
               @click="emit('edit', s.Name)"
             >
@@ -186,7 +186,7 @@ function formatDateTime(iso?: string): string {
               />
             </button>
             <button
-              class="p-2 rounded-lg bg-neutral-700 hover:bg-red-600 text-neutral-400 hover:text-white transition-colors group"
+              class="p-2 rounded-lg bg-[#262626] hover:bg-red-600 text-neutral-400 hover:text-white transition-colors group"
               @click="emit('delete', s.Name)"
             >
               <Trash2
@@ -210,7 +210,7 @@ function formatDateTime(iso?: string): string {
 
       <div class="flex justify-center pt-2">
         <button
-          class="px-5 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
+          class="px-5 py-2.5 rounded-xl bg-[#262626] hover:bg-[#262626] border border-neutral-700 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
           @click="emit('add')"
         >
           <Plus

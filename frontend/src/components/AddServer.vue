@@ -85,7 +85,7 @@ function back() {
           v-model="url"
           type="text"
           placeholder="https://host/api/client-archive/abc123"
-          class="flex-1 px-4 py-2.5 rounded-lg bg-neutral-800 border border-neutral-700 text-sm focus:outline-none focus:border-primary"
+          class="flex-1 px-4 py-2.5 rounded-lg bg-[#262626] border border-neutral-700 text-sm focus:outline-none focus:border-primary"
         />
         <button
           class="px-4 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
@@ -112,7 +112,7 @@ function back() {
       </h2>
 
       <div
-        class="p-4 rounded-xl bg-neutral-800 border border-neutral-700 mb-6 space-y-2"
+        class="p-4 rounded-xl bg-[#262626] border border-neutral-700 mb-6 space-y-2"
       >
         <div class="flex justify-between">
           <span class="text-neutral-400 text-sm">Server</span>
@@ -138,7 +138,7 @@ function back() {
 
       <div class="flex gap-3">
         <button
-          class="flex-1 py-2.5 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+          class="flex-1 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
           @click="cancel"
         >
           <ArrowLeft class="w-4 h-4" />
@@ -161,7 +161,7 @@ function back() {
           <Loader2 class="w-4 h-4 animate-spin" />
           <span class="capitalize">{{ status }}</span>
         </div>
-        <div v-if="total > 0" class="w-full bg-neutral-800 rounded-full h-2">
+        <div v-if="total > 0" class="w-full bg-[#262626] rounded-full h-2">
           <div
             class="bg-primary h-2 rounded-full transition-all"
             :style="{ width: `${Math.min(100, (progress / total) * 100)}%` }"
@@ -190,7 +190,7 @@ function back() {
 
       <button
         v-if="done || error"
-        class="mt-4 px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-600 text-sm transition-colors"
+        class="mt-4 px-4 py-2 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm transition-colors"
         @click="back"
       >
         Back to servers

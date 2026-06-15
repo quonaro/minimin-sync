@@ -38,6 +38,8 @@ export function RemoveServer(arg1:string):Promise<void>;
 
 export function RestartApp():Promise<void>;
 
+export function RunManualCheck():Promise<void>;
+
 export function RunServer(arg1:string):Promise<void>;
 
 export function SaveConfig(arg1:config.Config):Promise<void>;

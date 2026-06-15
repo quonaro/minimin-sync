@@ -70,6 +70,10 @@ export function RestartApp() {
   return window['go']['main']['App']['RestartApp']();
 }
 
+export function RunManualCheck() {
+  return window['go']['main']['App']['RunManualCheck']();
+}
+
 export function RunServer(arg1) {
   return window['go']['main']['App']['RunServer'](arg1);
 }

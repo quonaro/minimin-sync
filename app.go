@@ -67,6 +67,15 @@ func (a *App) checkSelfUpdateOnStartup() {
 	}
 }
 
+// RunManualCheck triggers an immediate auto-check across all servers.
+func (a *App) RunManualCheck() {
+	go func() {
+		wailsruntime.EventsEmit(a.ctx, "autoCheck:start")
+		a.runAutoCheck()
+		wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
+	}()
+}
+
 func (a *App) autoCheckLoop() {
 	for {
 		interval := a.config.AutoCheckIntervalMinutes
@@ -76,7 +85,9 @@ func (a *App) autoCheckLoop() {
 		timer := time.NewTimer(time.Duration(interval) * time.Minute)
 
 		if !a.syncService.IsOperationRunning() {
+			wailsruntime.EventsEmit(a.ctx, "autoCheck:start")
 			a.runAutoCheck()
+			wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 		}
 
 		select {
@@ -118,8 +129,15 @@ func (a *App) runAutoCheck() {
 		}
 		res, err := a.syncService.CheckUpdates(s.Name)
 		if err != nil {
+			wailsruntime.EventsEmit(a.ctx, "checkUpdates:error", map[string]string{
+				"serverID": s.Name,
+				"error":    err.Error(),
+			})
 			continue
 		}
+		wailsruntime.EventsEmit(a.ctx, "checkUpdates:ok", map[string]string{
+			"serverID": s.Name,
+		})
 		missingCnt, outdatedCnt := 0, 0
 		if v, ok := res["missing"].([]sync.ManifestFile); ok {
 			missingCnt = len(v)

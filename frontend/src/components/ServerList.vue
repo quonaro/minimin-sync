@@ -29,6 +29,7 @@ interface Server {
 const props = defineProps<{
   servers: Server[];
   pendingUpdates?: Record<string, number>;
+  checkErrors?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -118,7 +119,14 @@ function formatDateTime(iso?: string): string {
           <div class="flex items-center gap-2">
             <p class="font-medium text-white">{{ s.Name }}</p>
             <span
-              v-if="pendingUpdates && pendingUpdates[s.Name]"
+              v-if="checkErrors && checkErrors[s.Name]"
+              class="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold"
+              :title="checkErrors[s.Name]"
+            >
+              Unavailable
+            </span>
+            <span
+              v-else-if="pendingUpdates && pendingUpdates[s.Name]"
               class="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold"
             >
               {{ pendingUpdates[s.Name] }}

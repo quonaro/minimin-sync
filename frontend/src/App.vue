@@ -39,6 +39,8 @@ const appError = ref<string>("");
 const deleteConfirm = ref(false);
 const deleteTarget = ref("");
 const pendingUpdates = ref<Record<string, number>>({});
+const checkErrors = ref<Record<string, string>>({});
+const autoCheckRunning = ref(false);
 const editModal = ref(false);
 const editTarget = ref("");
 const editUrl = ref("");
@@ -87,6 +89,22 @@ if ((window as any).runtime) {
   EventsOn("selfUpdate:available", (info: any) => {
     updateInfo.value = info;
     selfUpdateModal.value = true;
+  });
+
+  EventsOn("checkUpdates:error", (data: any) => {
+    checkErrors.value[data.serverID] = data.error;
+  });
+
+  EventsOn("checkUpdates:ok", (data: any) => {
+    delete checkErrors.value[data.serverID];
+  });
+
+  EventsOn("autoCheck:start", () => {
+    autoCheckRunning.value = true;
+  });
+
+  EventsOn("autoCheck:done", () => {
+    autoCheckRunning.value = false;
   });
 }
 
@@ -349,6 +367,18 @@ async function cancelRestart() {
   restartModal.value = false;
 }
 
+async function handleManualCheck() {
+  if (autoCheckRunning.value) return;
+  try {
+    const fn = (window as any).go?.main?.App?.RunManualCheck;
+    if (fn) {
+      await fn();
+    }
+  } catch (e: any) {
+    console.error("Manual check failed:", e);
+  }
+}
+
 function acceptSelfUpdate() {
   selfUpdateModal.value = false;
   doUpdate();
@@ -414,10 +444,15 @@ const pageTitle = computed(() => {
         </div>
       </div>
 
-      <div class="flex-1 text-center">
+      <div class="flex-1 text-center flex items-center justify-center gap-2">
         <span class="text-sm font-medium text-neutral-300">{{
           pageTitle
         }}</span>
+        <Loader2
+          class="w-4 h-4 text-primary cursor-pointer"
+          :class="autoCheckRunning ? 'animate-spin' : ''"
+          @click="handleManualCheck"
+        />
       </div>
 
       <div class="flex items-center gap-3 w-1/3 justify-end">
@@ -655,6 +690,7 @@ const pageTitle = computed(() => {
         <ServerList
           :servers="servers"
           :pending-updates="pendingUpdates"
+          :check-errors="checkErrors"
           @run="handleRun"
           @check="goCheck"
           @add="goAdd"

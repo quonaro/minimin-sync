@@ -52,6 +52,7 @@ const updateDownloading = ref(false);
 const updateProgress = ref(0);
 const updateTotal = ref(0);
 const restartModal = ref(false);
+const selfUpdateModal = ref(false);
 const setupTab = ref<"launcher" | "general">("launcher");
 const appVersion = ref("");
 const versionToast = ref(false);
@@ -81,6 +82,11 @@ if ((window as any).runtime) {
   EventsOn("updateSelf:done", () => {
     updateDownloading.value = false;
     restartModal.value = true;
+  });
+
+  EventsOn("selfUpdate:available", (info: any) => {
+    updateInfo.value = info;
+    selfUpdateModal.value = true;
   });
 }
 
@@ -341,6 +347,15 @@ async function confirmRestart() {
 
 async function cancelRestart() {
   restartModal.value = false;
+}
+
+function acceptSelfUpdate() {
+  selfUpdateModal.value = false;
+  doUpdate();
+}
+
+function dismissSelfUpdate() {
+  selfUpdateModal.value = false;
 }
 
 const pageTitle = computed(() => {
@@ -729,6 +744,43 @@ const pageTitle = computed(() => {
                 Saving...
               </span>
               <span v-else>Save</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="selfUpdateModal"
+        class="absolute inset-0 z-40 bg-black/70 flex items-center justify-center p-6"
+      >
+        <div
+          class="max-w-sm w-full p-6 rounded-xl bg-[#262626] border border-neutral-700 text-center"
+        >
+          <h3 class="text-lg font-bold mb-2">Update Available</h3>
+          <p class="text-neutral-400 text-sm mb-1">
+            A new version of MiniMin Sync is available.
+          </p>
+          <p class="text-sm text-neutral-300 mb-4">
+            Current:
+            <span class="font-mono text-xs">{{ updateInfo?.current }}</span>
+            <br />
+            Latest:
+            <span class="font-mono text-xs text-emerald-400">{{
+              updateInfo?.version
+            }}</span>
+          </p>
+          <div class="flex gap-3">
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-[#262626] hover:bg-[#262626] text-sm font-medium transition-colors"
+              @click="dismissSelfUpdate"
+            >
+              Later
+            </button>
+            <button
+              class="flex-1 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors"
+              @click="acceptSelfUpdate"
+            >
+              Download & Update
             </button>
           </div>
         </div>

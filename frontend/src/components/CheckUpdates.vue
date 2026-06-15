@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import {
   CheckUpdates,
   ApplyUpdates,
@@ -11,10 +11,7 @@ import {
   Download,
   AlertTriangle,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
-  Square,
-  CheckSquare2,
+  Check,
   Plug,
   Search,
 } from "@lucide/vue";
@@ -41,11 +38,44 @@ const outdated = ref<ManifestFile[]>([]);
 const orphan = ref<string[]>([]);
 const selected = ref<Set<string>>(new Set());
 
-const collapsed = ref({ missing: false, outdated: false, orphan: true });
+type TabKey = "missing" | "outdated" | "orphan";
+const activeTab = ref<TabKey>("missing");
 
-function toggleSection(section: "missing" | "outdated" | "orphan") {
-  collapsed.value[section] = !collapsed.value[section];
-}
+const tabs = computed(() => [
+  {
+    key: "missing" as TabKey,
+    label: "Missing",
+    count: missing.value.length,
+    icon: Download,
+    color: "text-emerald-400",
+  },
+  {
+    key: "outdated" as TabKey,
+    label: "Outdated",
+    count: outdated.value.length,
+    icon: AlertTriangle,
+    color: "text-amber-400",
+  },
+  {
+    key: "orphan" as TabKey,
+    label: "Orphan",
+    count: orphan.value.length,
+    icon: AlertTriangle,
+    color: "text-red-400",
+  },
+]);
+
+const visibleTabs = computed(() => tabs.value.filter((t) => t.count > 0));
+
+watch(
+  visibleTabs,
+  (tabs) => {
+    if (tabs.length > 0 && !tabs.find((t) => t.key === activeTab.value)) {
+      activeTab.value = tabs[0].key;
+    }
+  },
+  { immediate: true },
+);
 
 const applying = ref(false);
 const applyProgress = ref(0);
@@ -247,6 +277,46 @@ const groupedOrphan = computed(() => {
   }
   return Array.from(map.values()).sort((a, b) => a.info.order - b.info.order);
 });
+
+type SubTabKey = "mods" | "resourcepacks" | "shaderpacks" | "other";
+const activeSubTab = ref<SubTabKey>("mods");
+
+const subTabs = [
+  { key: "mods" as SubTabKey, label: "Mods" },
+  { key: "resourcepacks" as SubTabKey, label: "Resource Packs" },
+  { key: "shaderpacks" as SubTabKey, label: "Shader Packs" },
+  { key: "other" as SubTabKey, label: "Other" },
+];
+
+const availableSubTabs = computed(() => {
+  let keys: string[];
+  if (activeTab.value === "missing") {
+    keys = groupedMissing.value.map((g) => g.info.key);
+  } else if (activeTab.value === "outdated") {
+    keys = groupedOutdated.value.map((g) => g.info.key);
+  } else {
+    keys = groupedOrphan.value.map((g) => g.info.key);
+  }
+  const set = new Set(keys);
+  return subTabs.filter((t) => set.has(t.key));
+});
+
+watch(
+  availableSubTabs,
+  (tabs) => {
+    if (tabs.length > 0 && !tabs.find((t) => t.key === activeSubTab.value)) {
+      activeSubTab.value = tabs[0].key;
+    }
+  },
+  { immediate: true },
+);
+
+watch(activeTab, () => {
+  const tabs = availableSubTabs.value;
+  if (tabs.length > 0 && !tabs.find((t) => t.key === activeSubTab.value)) {
+    activeSubTab.value = tabs[0].key;
+  }
+});
 </script>
 
 <template>
@@ -329,214 +399,201 @@ const groupedOrphan = computed(() => {
         </div>
       </div>
 
-      <div class="flex-1 overflow-auto min-h-0">
-        <div
-          v-if="
-            missing.length === 0 && outdated.length === 0 && orphan.length === 0
-          "
-          class="text-center py-12 text-neutral-500"
-        >
+      <div
+        v-if="
+          missing.length === 0 && outdated.length === 0 && orphan.length === 0
+        "
+        class="flex-1 flex items-center justify-center text-center py-12 text-neutral-500"
+      >
+        <div>
           <CheckCircle class="w-10 h-10 mx-auto mb-2" />
           <p>Everything is up to date</p>
         </div>
-
-        <div v-else class="space-y-4 max-w-3xl">
-          <div v-if="missing.length > 0">
-            <button
-              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-              @click="toggleSection('missing')"
-            >
-              <Download class="w-4 h-4 text-emerald-400" />
-              Missing ({{ missing.length }})
-              <component
-                :is="collapsed.missing ? ChevronDown : ChevronUp"
-                class="w-4 h-4 ml-auto text-neutral-500"
-              />
-            </button>
-            <div v-if="!collapsed.missing" class="space-y-3">
-              <div v-for="group in groupedMissing" :key="group.info.key">
-                <div
-                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
-                >
-                  {{ group.info.label }} &middot; {{ group.info.dir }}
-                </div>
-                <div class="space-y-1">
-                  <label
-                    v-for="f in group.files"
-                    :key="f.path"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
-                  >
-                    <div
-                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                      :class="
-                        selected.has(f.path)
-                          ? 'text-primary'
-                          : 'text-neutral-500 hover:text-neutral-400'
-                      "
-                    >
-                      <CheckSquare2
-                        v-if="selected.has(f.path)"
-                        class="w-5 h-5"
-                      />
-                      <Square v-else class="w-5 h-5" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-sm truncate">{{ basename(f.path) }}</div>
-                      <div class="text-xs text-neutral-500 truncate">
-                        {{ installDir(f.path) }}
-                      </div>
-                    </div>
-                    <span class="text-xs text-neutral-500">{{
-                      formatSize(f.size)
-                    }}</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="outdated.length > 0">
-            <button
-              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-              @click="toggleSection('outdated')"
-            >
-              <AlertTriangle class="w-4 h-4 text-amber-400" />
-              Outdated ({{ outdated.length }})
-              <component
-                :is="collapsed.outdated ? ChevronDown : ChevronUp"
-                class="w-4 h-4 ml-auto text-neutral-500"
-              />
-            </button>
-            <div v-if="!collapsed.outdated" class="space-y-3">
-              <div v-for="group in groupedOutdated" :key="group.info.key">
-                <div
-                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
-                >
-                  {{ group.info.label }} &middot; {{ group.info.dir }}
-                </div>
-                <div class="space-y-1">
-                  <label
-                    v-for="f in group.files"
-                    :key="f.path"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
-                  >
-                    <div
-                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                      :class="
-                        selected.has(f.path)
-                          ? 'text-primary'
-                          : 'text-neutral-500 hover:text-neutral-400'
-                      "
-                    >
-                      <CheckSquare2
-                        v-if="selected.has(f.path)"
-                        class="w-5 h-5"
-                      />
-                      <Square v-else class="w-5 h-5" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-sm truncate">{{ basename(f.path) }}</div>
-                      <div class="text-xs text-neutral-500 truncate">
-                        {{ installDir(f.path) }}
-                      </div>
-                    </div>
-                    <span class="text-xs text-neutral-500">{{
-                      formatSize(f.size)
-                    }}</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="orphan.length > 0">
-            <button
-              class="text-sm font-medium text-neutral-300 mb-2 flex items-center gap-1.5 w-full text-left hover:text-white transition-colors"
-              @click="toggleSection('orphan')"
-            >
-              <AlertTriangle class="w-4 h-4 text-red-400" />
-              Orphan ({{ orphan.length }})
-              <component
-                :is="collapsed.orphan ? ChevronDown : ChevronUp"
-                class="w-4 h-4 ml-auto text-neutral-500"
-              />
-            </button>
-            <div v-if="!collapsed.orphan" class="space-y-3">
-              <div v-for="group in groupedOrphan" :key="group.info.key">
-                <div
-                  class="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-1 pl-2"
-                >
-                  {{ group.info.label }} &middot; {{ group.info.dir }}
-                </div>
-                <div class="space-y-1">
-                  <label
-                    v-for="p in group.paths"
-                    :key="p"
-                    class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
-                  >
-                    <div
-                      class="w-5 h-5 flex items-center justify-center transition-colors flex-shrink-0"
-                      :class="
-                        selected.has(p)
-                          ? 'text-primary'
-                          : 'text-neutral-500 hover:text-neutral-400'
-                      "
-                    >
-                      <CheckSquare2 v-if="selected.has(p)" class="w-5 h-5" />
-                      <Square v-else class="w-5 h-5" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-sm truncate text-red-300">
-                        {{ basename(p) }}
-                      </div>
-                      <div class="text-xs text-neutral-500 truncate">
-                        {{ installDir(p) }}
-                      </div>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
-      <div class="flex-shrink-0 pt-4 max-w-3xl w-full mx-auto">
-        <button
-          v-if="!applying && !opRunning && selected.size > 0"
-          class="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium transition-colors"
-          @click="apply"
-        >
-          Apply {{ selected.size }} update(s)
-        </button>
-
-        <div
-          v-else-if="opRunning"
-          class="text-center text-sm text-neutral-500 py-3"
-        >
-          Another operation is in progress...
+      <div v-else class="flex flex-col flex-1 min-h-0">
+        <div class="flex gap-1 mb-4 p-1 bg-[#262626] rounded-lg shrink-0">
+          <button
+            v-for="tab in visibleTabs"
+            :key="tab.key"
+            class="flex-1 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5"
+            :class="
+              activeTab === tab.key
+                ? 'bg-primary text-white'
+                : 'text-neutral-400 hover:text-white'
+            "
+            @click="activeTab = tab.key"
+          >
+            <component :is="tab.icon" class="w-4 h-4" :class="tab.color" />
+            {{ tab.label }} ({{ tab.count }})
+          </button>
         </div>
 
-        <div v-if="applying" class="space-y-2">
-          <div class="flex items-center gap-2 text-sm text-neutral-300">
-            <Loader2 class="w-4 h-4 animate-spin" />
-            <span class="capitalize">{{ applyStatus }}</span>
-          </div>
-          <div
-            v-if="applyTotal > 0"
-            class="w-full bg-[#262626] rounded-full h-2"
+        <div class="flex gap-1 mb-3 p-1 bg-[#1a1a1a] rounded-lg shrink-0">
+          <button
+            v-for="sub in availableSubTabs"
+            :key="sub.key"
+            class="flex-1 py-1.5 rounded-md text-xs font-medium transition-colors"
+            :class="
+              activeSubTab === sub.key
+                ? 'bg-[#333] text-white'
+                : 'text-neutral-500 hover:text-neutral-300'
+            "
+            @click="activeSubTab = sub.key"
           >
-            <div
-              class="bg-primary h-2 rounded-full transition-all"
-              :style="{
-                width: `${Math.min(100, (applyProgress / applyTotal) * 100)}%`,
-              }"
-            ></div>
+            {{ sub.label }}
+          </button>
+        </div>
+
+        <div class="flex-1 min-h-0 overflow-auto">
+          <div v-if="activeTab === 'missing'" class="space-y-1">
+            <div v-for="group in groupedMissing" :key="group.info.key">
+              <div v-if="group.info.key === activeSubTab" class="space-y-1">
+                <label
+                  v-for="f in group.files"
+                  :key="f.path"
+                  class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
+                  @click="toggle(f.path)"
+                >
+                  <div
+                    class="w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0"
+                    :class="
+                      selected.has(f.path)
+                        ? 'bg-primary border-primary'
+                        : 'border-neutral-600'
+                    "
+                  >
+                    <Check
+                      v-if="selected.has(f.path)"
+                      class="w-3.5 h-3.5 text-white"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">{{ basename(f.path) }}</div>
+                    <div class="text-xs text-neutral-500 truncate">
+                      {{ installDir(f.path) }}
+                    </div>
+                  </div>
+                  <span class="text-xs text-neutral-500">{{
+                    formatSize(f.size)
+                  }}</span>
+                </label>
+              </div>
+            </div>
           </div>
-          <p v-if="applyTotal > 0" class="text-xs text-neutral-500 text-right">
-            {{ Math.round(applyProgress / 1024 / 1024) }} /
-            {{ Math.round(applyTotal / 1024 / 1024) }} MB
-          </p>
+
+          <div v-if="activeTab === 'outdated'" class="space-y-1">
+            <div v-for="group in groupedOutdated" :key="group.info.key">
+              <div v-if="group.info.key === activeSubTab" class="space-y-1">
+                <label
+                  v-for="f in group.files"
+                  :key="f.path"
+                  class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
+                  @click="toggle(f.path)"
+                >
+                  <div
+                    class="w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0"
+                    :class="
+                      selected.has(f.path)
+                        ? 'bg-primary border-primary'
+                        : 'border-neutral-600'
+                    "
+                  >
+                    <Check
+                      v-if="selected.has(f.path)"
+                      class="w-3.5 h-3.5 text-white"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate">{{ basename(f.path) }}</div>
+                    <div class="text-xs text-neutral-500 truncate">
+                      {{ installDir(f.path) }}
+                    </div>
+                  </div>
+                  <span class="text-xs text-neutral-500">{{
+                    formatSize(f.size)
+                  }}</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="activeTab === 'orphan'" class="space-y-1">
+            <div v-for="group in groupedOrphan" :key="group.info.key">
+              <div v-if="group.info.key === activeSubTab" class="space-y-1">
+                <label
+                  v-for="p in group.paths"
+                  :key="p"
+                  class="flex items-center gap-3 p-2 rounded-lg bg-[#262626]/50 hover:bg-[#262626] cursor-pointer"
+                  @click="toggle(p)"
+                >
+                  <div
+                    class="w-5 h-5 rounded border flex items-center justify-center transition-colors flex-shrink-0"
+                    :class="
+                      selected.has(p)
+                        ? 'bg-primary border-primary'
+                        : 'border-neutral-600'
+                    "
+                  >
+                    <Check
+                      v-if="selected.has(p)"
+                      class="w-3.5 h-3.5 text-white"
+                    />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm truncate text-red-300">
+                      {{ basename(p) }}
+                    </div>
+                    <div class="text-xs text-neutral-500 truncate">
+                      {{ installDir(p) }}
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-shrink-0 pt-4 w-full">
+          <button
+            v-if="!applying && !opRunning && selected.size > 0"
+            class="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium transition-colors"
+            @click="apply"
+          >
+            Apply {{ selected.size }} update(s)
+          </button>
+
+          <div
+            v-else-if="opRunning"
+            class="text-center text-sm text-neutral-500 py-3"
+          >
+            Another operation is in progress...
+          </div>
+
+          <div v-if="applying" class="space-y-2">
+            <div class="flex items-center gap-2 text-sm text-neutral-300">
+              <Loader2 class="w-4 h-4 animate-spin" />
+              <span class="capitalize">{{ applyStatus }}</span>
+            </div>
+            <div
+              v-if="applyTotal > 0"
+              class="w-full bg-[#262626] rounded-full h-2"
+            >
+              <div
+                class="bg-primary h-2 rounded-full transition-all"
+                :style="{
+                  width: `${Math.min(100, (applyProgress / applyTotal) * 100)}%`,
+                }"
+              ></div>
+            </div>
+            <p
+              v-if="applyTotal > 0"
+              class="text-xs text-neutral-500 text-right"
+            >
+              {{ Math.round(applyProgress / 1024 / 1024) }} /
+              {{ Math.round(applyTotal / 1024 / 1024) }} MB
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -53,6 +53,18 @@ func (a *App) startup(ctx context.Context) {
 	a.syncService = sync.NewService(ctx, a.config.InstancesDir)
 	a.autoCheckReset = make(chan struct{})
 	go a.autoCheckLoop()
+	go a.checkSelfUpdateOnStartup()
+}
+
+func (a *App) checkSelfUpdateOnStartup() {
+	time.Sleep(3 * time.Second)
+	info, err := a.CheckForUpdate()
+	if err != nil {
+		return
+	}
+	if info["available"].(bool) {
+		wailsruntime.EventsEmit(a.ctx, "selfUpdate:available", info)
+	}
 }
 
 func (a *App) autoCheckLoop() {

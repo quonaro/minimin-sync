@@ -11,12 +11,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"minimin-sync/pkg/config"
 	"minimin-sync/pkg/discovery"
 	"minimin-sync/pkg/instance"
-	"minimin-sync/pkg/sync"
+	syncpkg "minimin-sync/pkg/sync"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -25,7 +26,7 @@ import (
 type App struct {
 	ctx            context.Context
 	config         *config.Config
-	syncService    *sync.Service
+	syncService    *syncpkg.Service
 	autoCheckReset chan struct{}
 	updateTmpPath  string
 }
@@ -50,7 +51,7 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.config.Save()
 	}
 
-	a.syncService = sync.NewService(ctx, a.config.InstancesDir)
+	a.syncService = syncpkg.NewService(ctx, a.config.InstancesDir)
 	a.autoCheckReset = make(chan struct{})
 	go a.autoCheckLoop()
 	go a.checkSelfUpdateOnStartup()
@@ -72,7 +73,6 @@ func (a *App) RunManualCheck() {
 	go func() {
 		wailsruntime.EventsEmit(a.ctx, "autoCheck:start")
 		a.runAutoCheck()
-		wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 	}()
 }
 
@@ -87,7 +87,6 @@ func (a *App) autoCheckLoop() {
 		if !a.syncService.IsOperationRunning() {
 			wailsruntime.EventsEmit(a.ctx, "autoCheck:start")
 			a.runAutoCheck()
-			wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 		}
 
 		select {
@@ -108,56 +107,51 @@ func (a *App) IsOperationRunning() bool {
 
 func (a *App) runAutoCheck() {
 	if a.config.InstancesDir == "" {
+		wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 		return
 	}
 	servers, err := instance.Scan(a.config.InstancesDir)
 	if err != nil {
+		wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 		return
 	}
 
-	type updateInfo struct {
-		ServerID      string `json:"serverID"`
-		Name          string `json:"name"`
-		MissingCount  int    `json:"missingCount"`
-		OutdatedCount int    `json:"outdatedCount"`
-	}
-
-	var updates []updateInfo
+	var wg sync.WaitGroup
 	for _, s := range servers {
 		if s.Marker == nil {
 			continue
 		}
-		res, err := a.syncService.CheckUpdates(s.Name)
-		if err != nil {
-			wailsruntime.EventsEmit(a.ctx, "checkUpdates:error", map[string]string{
+		wg.Add(1)
+		go func(s instance.ScannedInstance) {
+			defer wg.Done()
+			res, err := a.syncService.CheckUpdates(s.Name)
+			if err != nil {
+				wailsruntime.EventsEmit(a.ctx, "checkUpdates:error", map[string]string{
+					"serverID": s.Name,
+					"error":    err.Error(),
+				})
+				return
+			}
+			wailsruntime.EventsEmit(a.ctx, "checkUpdates:ok", map[string]string{
 				"serverID": s.Name,
-				"error":    err.Error(),
 			})
-			continue
-		}
-		wailsruntime.EventsEmit(a.ctx, "checkUpdates:ok", map[string]string{
-			"serverID": s.Name,
-		})
-		missingCnt, outdatedCnt := 0, 0
-		if v, ok := res["missing"].([]sync.ManifestFile); ok {
-			missingCnt = len(v)
-		}
-		if v, ok := res["outdated"].([]sync.ManifestFile); ok {
-			outdatedCnt = len(v)
-		}
-		if missingCnt > 0 || outdatedCnt > 0 {
-			updates = append(updates, updateInfo{
-				ServerID:      s.Name,
-				Name:          s.Name,
-				MissingCount:  missingCnt,
-				OutdatedCount: outdatedCnt,
+			missingCnt, outdatedCnt := 0, 0
+			if v, ok := res["missing"].([]syncpkg.ManifestFile); ok {
+				missingCnt = len(v)
+			}
+			if v, ok := res["outdated"].([]syncpkg.ManifestFile); ok {
+				outdatedCnt = len(v)
+			}
+			wailsruntime.EventsEmit(a.ctx, "checkUpdates:result", map[string]interface{}{
+				"serverID":      s.Name,
+				"missingCount":  missingCnt,
+				"outdatedCount": outdatedCnt,
 			})
-		}
+		}(s)
 	}
-	if len(updates) > 0 {
-		wailsruntime.EventsEmit(a.ctx, "updates:available", updates)
-	}
+	wg.Wait()
 	wailsruntime.EventsEmit(a.ctx, "servers:reload")
+	wailsruntime.EventsEmit(a.ctx, "autoCheck:done")
 }
 
 // GetVersion returns the current application version.
@@ -181,7 +175,7 @@ func (a *App) SaveConfig(cfg config.Config) error {
 		return err
 	}
 	if a.syncService != nil {
-		a.syncService = sync.NewService(a.ctx, cfg.InstancesDir)
+		a.syncService = syncpkg.NewService(a.ctx, cfg.InstancesDir)
 	}
 	if oldInterval != cfg.AutoCheckIntervalMinutes && a.autoCheckReset != nil {
 		select {
@@ -223,18 +217,18 @@ func (a *App) RemoveServer(serverID string) error {
 }
 
 // PreviewServer fetches archive info for a URL without installing.
-func (a *App) PreviewServer(url string) (sync.InfoResponse, error) {
+func (a *App) PreviewServer(url string) (syncpkg.InfoResponse, error) {
 	if !strings.Contains(url, "?format=") {
 		url = url + "?format=prism"
 	}
-	token, baseURL, err := sync.ParseArchiveURL(url)
+	token, baseURL, err := syncpkg.ParseArchiveURL(url)
 	if err != nil {
-		return sync.InfoResponse{}, err
+		return syncpkg.InfoResponse{}, err
 	}
-	client := sync.NewClient(baseURL, token)
+	client := syncpkg.NewClient(baseURL, token)
 	info, err := client.FetchInfo()
 	if err != nil {
-		return sync.InfoResponse{}, err
+		return syncpkg.InfoResponse{}, err
 	}
 	return *info, nil
 }
@@ -414,7 +408,7 @@ func (a *App) RefreshServerInfo(serverID string) error {
 		return err
 	}
 
-	client := sync.NewClient(marker.BaseURL, marker.Token)
+	client := syncpkg.NewClient(marker.BaseURL, marker.Token)
 	info, err := client.FetchInfo()
 	if err != nil {
 		return err
@@ -430,7 +424,7 @@ func (a *App) UpdateServerURL(serverID, url string) error {
 	if !strings.Contains(url, "?format=") {
 		url = url + "?format=prism"
 	}
-	token, baseURL, err := sync.ParseArchiveURL(url)
+	token, baseURL, err := syncpkg.ParseArchiveURL(url)
 	if err != nil {
 		return err
 	}
@@ -444,7 +438,7 @@ func (a *App) UpdateServerURL(serverID, url string) error {
 		return err
 	}
 
-	client := sync.NewClient(baseURL, token)
+	client := syncpkg.NewClient(baseURL, token)
 	info, err := client.FetchInfo()
 	if err != nil {
 		return err

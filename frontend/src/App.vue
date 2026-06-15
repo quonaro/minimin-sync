@@ -60,14 +60,6 @@ const appVersion = ref("");
 const versionToast = ref(false);
 
 if ((window as any).runtime) {
-  EventsOn("updates:available", (updates: any[]) => {
-    const map: Record<string, number> = {};
-    for (const u of updates) {
-      map[u.serverID] = (u.missingCount || 0) + (u.outdatedCount || 0);
-    }
-    pendingUpdates.value = map;
-  });
-
   EventsOn("servers:reload", () => {
     loadServers();
   });
@@ -91,8 +83,18 @@ if ((window as any).runtime) {
     selfUpdateModal.value = true;
   });
 
+  EventsOn("checkUpdates:result", (data: any) => {
+    const total = (data.missingCount || 0) + (data.outdatedCount || 0);
+    if (total > 0) {
+      pendingUpdates.value[data.serverID] = total;
+    } else {
+      delete pendingUpdates.value[data.serverID];
+    }
+  });
+
   EventsOn("checkUpdates:error", (data: any) => {
     checkErrors.value[data.serverID] = data.error;
+    delete pendingUpdates.value[data.serverID];
   });
 
   EventsOn("checkUpdates:ok", (data: any) => {
@@ -449,8 +451,12 @@ const pageTitle = computed(() => {
           pageTitle
         }}</span>
         <Loader2
-          class="w-4 h-4 text-primary cursor-pointer"
-          :class="autoCheckRunning ? 'animate-spin' : ''"
+          class="w-4 h-4 text-primary cursor-pointer transition-all"
+          :class="
+            autoCheckRunning
+              ? 'animate-spin'
+              : 'opacity-50 hover:opacity-100 hover:scale-110'
+          "
           @click="handleManualCheck"
         />
       </div>

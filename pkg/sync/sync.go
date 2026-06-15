@@ -34,15 +34,23 @@ func checkStatus(resp *http.Response) error {
 	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	msg := body.Error
+	if msg == "" {
+		msg = http.StatusText(resp.StatusCode)
+	}
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		return fmt.Errorf("archive not found (404) — the link may be invalid or expired")
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return fmt.Errorf("access denied (%d) — the link may have expired", resp.StatusCode)
 	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable:
-		return fmt.Errorf("the server is temporarily unavailable")
+		return fmt.Errorf("server error: %s", msg)
 	default:
-		return fmt.Errorf("server returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("server returned HTTP %d: %s", resp.StatusCode, msg)
 	}
 }
 

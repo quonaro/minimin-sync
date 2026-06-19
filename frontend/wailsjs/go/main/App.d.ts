@@ -22,11 +22,15 @@ export function GetConfig():Promise<config.Config>;
 
 export function GetServers():Promise<Array<instance.ScannedInstance>>;
 
+export function GetUnlinkedInstances():Promise<Array<instance.ScannedInstance>>;
+
 export function GetVersion():Promise<string>;
 
 export function HasPendingUpdate():Promise<boolean>;
 
 export function IsOperationRunning():Promise<boolean>;
+
+export function LinkInstance(arg1:string,arg2:string):Promise<void>;
 
 export function OpenInstanceDir(arg1:string):Promise<void>;
 

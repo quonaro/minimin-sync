@@ -4,10 +4,12 @@ import {
   DiscoverAllLaunchers,
   SaveConfig,
   GetServers,
+  GetUnlinkedInstances,
   SelectInstancesDir,
   RemoveServer,
   RunServer,
   UpdateServerURL,
+  LinkInstance,
   RefreshServerInfo,
   OpenInstanceDir,
   CheckForUpdate,
@@ -26,6 +28,8 @@ export function useApp() {
   const currentView = ref<View>("setup");
   const instancesDir = ref("");
   const servers = ref<any[]>([]);
+  const unlinkedServers = ref<any[]>([]);
+  const showUnlinked = ref(false);
   const selectedServer = ref("");
   const detectedLaunchers = ref<string[]>([]);
   const selectedLauncher = ref<string>("");
@@ -41,6 +45,11 @@ export function useApp() {
   const editUrl = ref("");
   const editError = ref("");
   const editLoading = ref(false);
+  const linkModal = ref(false);
+  const linkTarget = ref("");
+  const linkUrl = ref("");
+  const linkError = ref("");
+  const linkLoading = ref(false);
   const autoCheckInterval = ref(5);
   const updateInfo = ref<Record<string, any> | null>(null);
   const updateChecking = ref(false);
@@ -141,6 +150,15 @@ export function useApp() {
       servers.value = result ?? [];
     } catch {
       servers.value = [];
+    }
+  }
+
+  async function loadUnlinkedServers() {
+    try {
+      const result = await GetUnlinkedInstances();
+      unlinkedServers.value = result ?? [];
+    } catch {
+      unlinkedServers.value = [];
     }
   }
 
@@ -259,6 +277,39 @@ export function useApp() {
     editUrl.value = "";
     editError.value = "";
     editLoading.value = false;
+  }
+
+  function openLink(serverId: string) {
+    linkTarget.value = serverId;
+    linkUrl.value = "";
+    linkError.value = "";
+    linkLoading.value = false;
+    linkModal.value = true;
+  }
+
+  async function confirmLink() {
+    if (!linkUrl.value) return;
+    linkLoading.value = true;
+    linkError.value = "";
+    try {
+      await LinkInstance(linkTarget.value, linkUrl.value);
+      linkModal.value = false;
+      showUnlinked.value = false;
+      await loadServers();
+      await loadUnlinkedServers();
+    } catch (e: any) {
+      linkError.value = e?.toString?.() || "Failed to link server";
+    } finally {
+      linkLoading.value = false;
+    }
+  }
+
+  function cancelLink() {
+    linkModal.value = false;
+    linkTarget.value = "";
+    linkUrl.value = "";
+    linkError.value = "";
+    linkLoading.value = false;
   }
 
   function goList() {
@@ -385,12 +436,20 @@ export function useApp() {
     selfUpdateModal.value = false;
   }
 
+  const displayServers = computed(() => {
+    return showUnlinked.value ? unlinkedServers.value : servers.value;
+  });
+
+  const listMode = computed(() => {
+    return showUnlinked.value ? "unlinked" : "linked";
+  });
+
   const pageTitle = computed(() => {
     switch (currentView.value) {
       case "setup":
         return "Setup";
       case "list":
-        return "Servers";
+        return showUnlinked.value ? "Other Builds" : "Servers";
       case "add":
         return "Add Server";
       case "check":
@@ -404,6 +463,10 @@ export function useApp() {
     currentView,
     instancesDir,
     servers,
+    unlinkedServers,
+    showUnlinked,
+    displayServers,
+    listMode,
     selectedServer,
     detectedLaunchers,
     selectedLauncher,
@@ -419,6 +482,11 @@ export function useApp() {
     editUrl,
     editError,
     editLoading,
+    linkModal,
+    linkTarget,
+    linkUrl,
+    linkError,
+    linkLoading,
     autoCheckInterval,
     updateInfo,
     updateChecking,
@@ -433,6 +501,7 @@ export function useApp() {
     versionToast,
     pageTitle,
     loadServers,
+    loadUnlinkedServers,
     scanLaunchers,
     selectLauncher,
     browseDir,
@@ -446,6 +515,9 @@ export function useApp() {
     openEdit,
     confirmEdit,
     cancelEdit,
+    openLink,
+    confirmLink,
+    cancelLink,
     goList,
     goCheck,
     goSetup,

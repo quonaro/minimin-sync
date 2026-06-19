@@ -38,6 +38,10 @@ export function GetServers() {
   return window['go']['main']['App']['GetServers']();
 }
 
+export function GetUnlinkedInstances() {
+  return window['go']['main']['App']['GetUnlinkedInstances']();
+}
+
 export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
@@ -48,6 +52,10 @@ export function HasPendingUpdate() {
 
 export function IsOperationRunning() {
   return window['go']['main']['App']['IsOperationRunning']();
+}
+
+export function LinkInstance(arg1, arg2) {
+  return window['go']['main']['App']['LinkInstance'](arg1, arg2);
 }
 
 export function OpenInstanceDir(arg1) {

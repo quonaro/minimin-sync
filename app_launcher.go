@@ -75,7 +75,8 @@ func findLauncherBinary(name string) (string, error) {
 		return p, nil
 	}
 
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		localAppData := os.Getenv("LOCALAPPDATA")
 		programFiles := os.Getenv("ProgramFiles")
 		programFilesX86 := os.Getenv("ProgramFiles(x86)")
@@ -108,7 +109,7 @@ func findLauncherBinary(name string) (string, error) {
 				return c, nil
 			}
 		}
-	} else if runtime.GOOS == "darwin" {
+	case "darwin":
 		home, _ := os.UserHomeDir()
 		var candidates []string
 		switch strings.ToLower(name) {

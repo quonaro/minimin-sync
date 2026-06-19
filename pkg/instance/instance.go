@@ -52,6 +52,21 @@ type ScannedInstance struct {
 
 // Scan finds all directories inside instancesDir that contain .minimin.json.
 func Scan(instancesDir string) ([]ScannedInstance, error) {
+	all, err := ScanAll(instancesDir)
+	if err != nil {
+		return nil, err
+	}
+	var results []ScannedInstance
+	for _, s := range all {
+		if s.Marker != nil {
+			results = append(results, s)
+		}
+	}
+	return results, nil
+}
+
+// ScanAll returns every directory inside instancesDir, including those without a .minimin.json marker.
+func ScanAll(instancesDir string) ([]ScannedInstance, error) {
 	entries, err := os.ReadDir(instancesDir)
 	if err != nil {
 		return []ScannedInstance{}, err
@@ -64,7 +79,7 @@ func Scan(instancesDir string) ([]ScannedInstance, error) {
 		dir := filepath.Join(instancesDir, e.Name())
 		m, err := ReadMarker(dir)
 		if err != nil {
-			continue
+			m = nil
 		}
 		results = append(results, ScannedInstance{
 			Dir:    dir,

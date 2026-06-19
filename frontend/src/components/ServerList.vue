@@ -8,8 +8,9 @@ import {
   Play,
   Pencil,
   FolderOpen,
+  Link,
 } from "@lucide/vue";
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 
 interface Marker {
   serverId: string;
@@ -26,8 +27,11 @@ interface Server {
   Marker?: Marker;
 }
 
+type ListMode = "linked" | "unlinked";
+
 const props = defineProps<{
   servers: Server[];
+  mode?: ListMode;
   pendingUpdates?: Record<string, number>;
   checkErrors?: Record<string, string>;
 }>();
@@ -39,7 +43,10 @@ const emit = defineEmits<{
   (e: "delete", serverId: string): void;
   (e: "edit", serverId: string): void;
   (e: "open-dir", serverId: string): void;
+  (e: "link", serverId: string): void;
 }>();
+
+const isUnlinked = computed(() => props.mode === "unlinked");
 
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval>;
@@ -96,9 +103,18 @@ function formatDateTime(iso?: string): string {
       class="absolute inset-0 flex flex-col items-center justify-center text-neutral-500"
     >
       <AlertCircle class="w-12 h-12 mb-4" />
-      <p class="text-lg font-medium text-neutral-300">No synced servers</p>
-      <p class="text-sm mt-1 mb-6">Add a server to get started</p>
+      <p class="text-lg font-medium text-neutral-300">
+        {{ isUnlinked ? "No other builds" : "No synced servers" }}
+      </p>
+      <p class="text-sm mt-1 mb-6">
+        {{
+          isUnlinked
+            ? "All instances are linked to MiniMin"
+            : "Add a server to get started"
+        }}
+      </p>
       <button
+        v-if="!isUnlinked"
         class="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
         @click="emit('add')"
       >
@@ -119,42 +135,64 @@ function formatDateTime(iso?: string): string {
           <div class="flex items-center gap-2">
             <p class="font-medium text-white">{{ s.Name }}</p>
             <span
-              v-if="checkErrors && checkErrors[s.Name]"
+              v-if="!isUnlinked && checkErrors && checkErrors[s.Name]"
               class="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold"
               :title="checkErrors[s.Name]"
             >
               Unavailable
             </span>
             <span
-              v-else-if="pendingUpdates && pendingUpdates[s.Name]"
+              v-else-if="
+                !isUnlinked && pendingUpdates && pendingUpdates[s.Name]
+              "
               class="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold"
             >
               {{ pendingUpdates[s.Name] }}
             </span>
           </div>
-          <p class="text-xs text-neutral-400 mt-0.5">
-            Last sync: {{ formatDateTime(s.Marker?.lastSyncAt) }} · Last check:
-            {{ formatDateTime(s.Marker?.lastCheckAt) }}
-          </p>
           <p
-            v-if="s.Marker?.expiresAt && !isExpired(s.Marker.expiresAt)"
-            class="text-xs mt-0.5 font-medium"
-            :class="timeLeftClass(s.Marker.expiresAt)"
+            v-if="isUnlinked"
+            class="text-xs text-neutral-500 mt-0.5 font-medium"
           >
-            Link expires in {{ formatTimeLeft(s.Marker.expiresAt) }}
+            Not linked to MiniMin
           </p>
-          <p
-            v-else-if="s.Marker?.expiresAt && isExpired(s.Marker.expiresAt)"
-            class="text-xs text-red-400 mt-0.5 font-medium"
-          >
-            Link expired — update required
-          </p>
-          <p v-else class="text-xs text-neutral-500 mt-0.5 font-medium">
-            Link expiry unknown
-          </p>
+          <template v-else>
+            <p class="text-xs text-neutral-400 mt-0.5">
+              Last sync: {{ formatDateTime(s.Marker?.lastSyncAt) }} · Last
+              check:
+              {{ formatDateTime(s.Marker?.lastCheckAt) }}
+            </p>
+            <p
+              v-if="s.Marker?.expiresAt && !isExpired(s.Marker.expiresAt)"
+              class="text-xs mt-0.5 font-medium"
+              :class="timeLeftClass(s.Marker.expiresAt)"
+            >
+              Link expires in {{ formatTimeLeft(s.Marker.expiresAt) }}
+            </p>
+            <p
+              v-else-if="s.Marker?.expiresAt && isExpired(s.Marker.expiresAt)"
+              class="text-xs text-red-400 mt-0.5 font-medium"
+            >
+              Link expired — update required
+            </p>
+            <p v-else class="text-xs text-neutral-500 mt-0.5 font-medium">
+              Link expiry unknown
+            </p>
+          </template>
         </div>
         <div class="flex items-center gap-2">
-          <template v-if="!isExpired(s.Marker?.expiresAt)">
+          <template v-if="isUnlinked">
+            <button
+              class="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors flex items-center gap-1.5 group"
+              @click="emit('link', s.Name)"
+            >
+              <Link
+                class="w-4 h-4 transition-transform duration-200 group-hover:scale-110"
+              />
+              Link
+            </button>
+          </template>
+          <template v-else-if="!isExpired(s.Marker?.expiresAt)">
             <button
               class="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors group"
               :title="'Run ' + s.Name"
@@ -216,7 +254,7 @@ function formatDateTime(iso?: string): string {
         </div>
       </div>
 
-      <div class="flex justify-center pt-2">
+      <div v-if="!isUnlinked" class="flex justify-center pt-2">
         <button
           class="px-5 py-2.5 rounded-xl bg-[#262626] hover:bg-[#262626] border border-neutral-700 text-white text-sm font-medium transition-colors flex items-center gap-2 group"
           @click="emit('add')"

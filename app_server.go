@@ -114,3 +114,59 @@ func (a *App) UpdateServerURL(serverID, url string) error {
 	marker.ExpiresAt = info.ExpiresAt
 	return instance.WriteMarker(instanceDir, marker)
 }
+
+// GetUnlinkedInstances returns instance directories that do not have a .minimin.json marker.
+func (a *App) GetUnlinkedInstances() ([]instance.ScannedInstance, error) {
+	dir := a.config.InstancesDir
+	if dir == "" {
+		return nil, fmt.Errorf("instances directory not configured")
+	}
+	all, err := instance.ScanAll(dir)
+	if err != nil {
+		return nil, err
+	}
+	var results []instance.ScannedInstance
+	for _, s := range all {
+		if s.Marker == nil {
+			results = append(results, s)
+		}
+	}
+	return results, nil
+}
+
+// LinkInstance writes a .minimin.json marker for an existing instance directory without modifying its files.
+func (a *App) LinkInstance(serverID, url string) error {
+	if !strings.Contains(url, "?format=") {
+		url = url + "?format=prism"
+	}
+	token, baseURL, err := syncpkg.ParseArchiveURL(url)
+	if err != nil {
+		return err
+	}
+	dir := a.config.InstancesDir
+	if dir == "" {
+		return fmt.Errorf("instances directory not configured")
+	}
+	instanceDir := filepath.Join(dir, serverID)
+	if _, err := os.Stat(instanceDir); err != nil {
+		return fmt.Errorf("instance directory not found: %w", err)
+	}
+	if _, err := instance.ReadMarker(instanceDir); err == nil {
+		return fmt.Errorf("instance is already linked")
+	}
+
+	client := syncpkg.NewClient(baseURL, token)
+	info, err := client.FetchInfo()
+	if err != nil {
+		return err
+	}
+
+	marker := &instance.Marker{
+		ServerID:   serverID,
+		Token:      token,
+		BaseURL:    baseURL,
+		LastSyncAt: time.Now().UTC().Format(time.RFC3339),
+		ExpiresAt:  info.ExpiresAt,
+	}
+	return instance.WriteMarker(instanceDir, marker)
+}

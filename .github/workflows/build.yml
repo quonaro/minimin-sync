@@ -2,10 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ main, master ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main, master ]
 
 jobs:
   release:
@@ -55,6 +52,13 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Ensure tag is on main
+      run: |
+        git fetch origin main
+        git merge-base --is-ancestor HEAD origin/main || (echo "Tag is not on main branch" && exit 1)
 
     - name: Setup Go
       uses: actions/setup-go@v6

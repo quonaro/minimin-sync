@@ -34,7 +34,7 @@ A lightweight desktop client for syncing Minecraft modpacks with friends. Works 
 
 - Go 1.21+
 - Node.js 18+
-- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`)
+- Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0`)
 - One of the supported launchers installed
 
 ### Run in development
